@@ -21,6 +21,28 @@ const focus = [
           <li>{item}</li>
         ))}
       </ul>
+      <a
+        href="https://github.com/osmond/Botanica"
+        class="project-card"
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label="Botanica — view on GitHub"
+      >
+        <div class="project-card__header">
+          <span class="project-card__name">Botanica</span>
+          <svg class="project-card__arrow" aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M3 8h10M9 4l4 4-4 4" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </div>
+        <p class="project-card__desc">
+          A plant care companion iOS app built with SwiftUI. Track watering schedules, identify plants, and keep your collection thriving.
+        </p>
+        <div class="project-card__tags">
+          <span>SwiftUI</span>
+          <span>iOS</span>
+          <span>CoreData</span>
+        </div>
+      </a>
     </div>
   </div>
 </section>
@@ -67,7 +89,7 @@ const focus = [
 
   .about__focus {
     list-style: none;
-    margin: 0;
+    margin: 0 0 2.5rem;
     padding: 0;
     display: flex;
     flex-wrap: wrap;
@@ -81,5 +103,69 @@ const focus = [
     border: 1px solid rgba(245, 244, 240, 0.1);
     border-radius: 100px;
     padding: 0.35rem 0.85rem;
+  }
+
+  .project-card {
+    display: block;
+    padding: 1.5rem;
+    border: 1px solid rgba(245, 244, 240, 0.1);
+    border-radius: 12px;
+    text-decoration: none;
+    transition: border-color 0.2s, background 0.2s;
+  }
+
+  .project-card:hover {
+    border-color: rgba(196, 107, 75, 0.4);
+    background: rgba(196, 107, 75, 0.04);
+  }
+
+  .project-card__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .project-card__name {
+    font-family: var(--font-display);
+    font-size: 1.25rem;
+    color: var(--color-text);
+  }
+
+  .project-card__arrow {
+    width: 1.25rem;
+    height: 1.25rem;
+    color: var(--color-muted);
+    flex-shrink: 0;
+    transition: color 0.2s, transform 0.2s;
+  }
+
+  .project-card:hover .project-card__arrow {
+    color: var(--color-accent);
+    transform: translate(3px, -3px);
+  }
+
+  .project-card__desc {
+    font-family: var(--font-body);
+    font-size: 0.9375rem;
+    color: var(--color-muted);
+    line-height: 1.6;
+    margin: 0 0 1rem;
+  }
+
+  .project-card__tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+
+  .project-card__tags span {
+    font-family: var(--font-body);
+    font-size: 0.75rem;
+    color: var(--color-muted);
+    border: 1px solid rgba(245, 244, 240, 0.08);
+    border-radius: 100px;
+    padding: 0.2rem 0.65rem;
   }
 </style>

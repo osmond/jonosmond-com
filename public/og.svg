@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <!-- Background -->
+  <rect width="1200" height="630" fill="#0f0f0f"/>
+
+  <!-- Subtle grid texture -->
+  <line x1="0" y1="315" x2="1200" y2="315" stroke="#f5f4f0" stroke-width="0.5" stroke-opacity="0.04"/>
+  <line x1="600" y1="0" x2="600" y2="630" stroke="#f5f4f0" stroke-width="0.5" stroke-opacity="0.04"/>
+
+  <!-- Accent mark -->
+  <rect x="80" y="80" width="48" height="4" rx="2" fill="#c46b4b"/>
+
+  <!-- Name -->
+  <text
+    x="80"
+    y="300"
+    font-family="Georgia, 'Times New Roman', serif"
+    font-size="112"
+    font-weight="400"
+    fill="#f5f4f0"
+    letter-spacing="-4"
+  >Jon Osmond</text>
+
+  <!-- Tagline -->
+  <text
+    x="80"
+    y="380"
+    font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Helvetica, Arial, sans-serif"
+    font-size="28"
+    font-weight="400"
+    fill="#888884"
+    letter-spacing="0"
+  >Interface Developer</text>
+
+  <!-- URL -->
+  <text
+    x="80"
+    y="546"
+    font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Helvetica, Arial, sans-serif"
+    font-size="20"
+    font-weight="400"
+    fill="#c46b4b"
+    letter-spacing="2"
+  >jonosmond.com</text>
+
+  <!-- Bottom border accent -->
+  <rect x="0" y="622" width="1200" height="8" fill="#c46b4b" fill-opacity="0.3"/>
+</svg>

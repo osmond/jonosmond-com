@@ -25,8 +25,13 @@
       </div>
       <a class="track__name" href="" target="_blank" rel="noopener noreferrer"></a>
       <span class="track__artist"></span>
+      <div class="track__progress" hidden>
+        <div class="track__progress-bar"></div>
+      </div>
     </div>
-    <img class="track__art" src="" alt="" width="120" height="120" crossorigin="anonymous" />
+    <a class="track__art-link" href="" target="_blank" rel="noopener noreferrer" aria-label="Open album on Spotify">
+      <img class="track__art" src="" alt="" width="120" height="120" crossorigin="anonymous" />
+    </a>
   </div>
 </template>
 
@@ -41,6 +46,9 @@
     artist: string;
     albumArt: string;
     url: string;
+    albumUrl: string;
+    progressMs: number;
+    durationMs: number;
   };
 
   let currentTrack = '';
@@ -95,6 +103,9 @@
 
     node.querySelector('.track__artist')!.textContent = data.artist;
 
+    const artLink = node.querySelector<HTMLAnchorElement>('.track__art-link')!;
+    artLink.href = data.albumUrl || data.url;
+
     const img = node.querySelector<HTMLImageElement>('.track__art')!;
     img.src = data.albumArt;
     img.alt = `${data.track} album art`;
@@ -107,6 +118,15 @@
     } else {
       indicator.remove();
       statusLabel.textContent = 'Last played';
+    }
+
+    // Progress bar
+    if (data.isPlaying && data.durationMs > 0) {
+      const progressWrap = node.querySelector<HTMLElement>('.track__progress')!;
+      const bar = node.querySelector<HTMLElement>('.track__progress-bar')!;
+      const pct = Math.min((data.progressMs / data.durationMs) * 100, 100);
+      bar.style.width = `${pct}%`;
+      progressWrap.hidden = false;
     }
 
     widget.replaceChildren(node);
@@ -216,6 +236,14 @@
     50% { opacity: 0.3; }
   }
 
+  @media (prefers-reduced-motion: reduce) {
+    .skeleton__title,
+    .skeleton__artist {
+      animation: none;
+      opacity: 0.5;
+    }
+  }
+
   :global(.track) {
     display: flex;
     align-items: flex-start;
@@ -228,6 +256,7 @@
     flex-direction: column;
     gap: 0.5rem;
     min-width: 0;
+    flex: 1;
   }
 
   :global(.track__status) {
@@ -269,13 +298,51 @@
     color: var(--color-muted);
   }
 
+  :global(.track__art-link) {
+    display: block;
+    flex-shrink: 0;
+    border-radius: 8px;
+    overflow: hidden;
+    transition: opacity 0.2s, transform 0.2s;
+  }
+
+  :global(.track__art-link:hover) {
+    opacity: 0.85;
+    transform: scale(1.03);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :global(.track__art-link) {
+      transition: opacity 0.2s;
+    }
+    :global(.track__art-link:hover) {
+      transform: none;
+    }
+  }
+
   :global(.track__art) {
     width: clamp(80px, 10vw, 120px);
     height: clamp(80px, 10vw, 120px);
     border-radius: 8px;
     object-fit: cover;
-    flex-shrink: 0;
+    display: block;
     box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+
+  :global(.track__progress) {
+    height: 2px;
+    background: rgba(245, 244, 240, 0.1);
+    border-radius: 1px;
+    margin-top: 0.5rem;
+    overflow: hidden;
+  }
+
+  :global(.track__progress-bar) {
+    height: 100%;
+    background: var(--color-accent);
+    border-radius: 1px;
+    width: 0%;
+    opacity: 0.7;
   }
 
   :global(.track__indicator) {
@@ -300,6 +367,12 @@
   @keyframes bar {
     0%, 100% { transform: scaleY(0.4); }
     50% { transform: scaleY(1); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :global(.track__indicator span) {
+      animation: none;
+    }
   }
 
   :global(.idle) {

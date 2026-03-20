@@ -7,6 +7,7 @@ const links = [
 ---
 
 <section class="hero">
+  <div class="hero__cursor-glow" aria-hidden="true"></div>
   <div class="hero__inner">
     <p class="hero__eyebrow">Interface Developer</p>
     <h1 class="hero__name">Jon<br />Osmond</h1>
@@ -31,17 +32,80 @@ const links = [
   </div>
 </section>
 
+<script>
+  const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // Scroll fade
+  if (!prefersReduced) {
+    const inner = document.querySelector<HTMLElement>('.hero__inner');
+    const onScroll = () => {
+      if (!inner) return;
+      const scrolled = window.scrollY;
+      const max = window.innerHeight * 0.65;
+      const progress = Math.min(scrolled / max, 1);
+      inner.style.opacity = String(1 - progress);
+      inner.style.transform = `translateY(${scrolled * 0.12}px)`;
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    document.addEventListener('astro:before-swap', () =>
+      window.removeEventListener('scroll', onScroll)
+    );
+  }
+
+  // Cursor glow
+  if (!prefersReduced) {
+    const glow = document.querySelector<HTMLElement>('.hero__cursor-glow');
+    const hero = document.querySelector<HTMLElement>('.hero');
+    if (glow && hero) {
+      const onMove = (e: MouseEvent) => {
+        const rect = hero.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        glow.style.setProperty('--gx', `${x}px`);
+        glow.style.setProperty('--gy', `${y}px`);
+        glow.style.opacity = '1';
+      };
+      const onLeave = () => { glow.style.opacity = '0'; };
+      hero.addEventListener('mousemove', onMove);
+      hero.addEventListener('mouseleave', onLeave);
+      document.addEventListener('astro:before-swap', () => {
+        hero.removeEventListener('mousemove', onMove);
+        hero.removeEventListener('mouseleave', onLeave);
+      });
+    }
+  }
+</script>
+
 <style>
   .hero {
+    position: relative;
     display: grid;
     place-items: start;
     min-height: 100svh;
     padding: clamp(2rem, 6vw, 5rem);
+    overflow: hidden;
+  }
+
+  .hero__cursor-glow {
+    position: absolute;
+    width: 600px;
+    height: 600px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(196, 107, 75, 0.12) 0%, transparent 65%);
+    transform: translate(-50%, -50%);
+    left: var(--gx, 50%);
+    top: var(--gy, 50%);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.4s ease, left 0.1s linear, top 0.1s linear;
+    will-change: left, top;
   }
 
   .hero__inner {
+    position: relative;
     max-width: 72rem;
     width: 100%;
+    will-change: opacity, transform;
   }
 
   .hero__eyebrow {

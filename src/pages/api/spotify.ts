@@ -20,16 +20,23 @@ interface SpotifyArtist {
   name: string;
 }
 
+interface SpotifyAlbum {
+  images: SpotifyImage[];
+  external_urls: { spotify: string };
+}
+
 interface SpotifyTrack {
   name: string;
   artists: SpotifyArtist[];
-  album: { images: SpotifyImage[] };
+  album: SpotifyAlbum;
   external_urls: { spotify: string };
+  duration_ms: number;
 }
 
 interface SpotifyCurrentlyPlaying {
   is_playing: boolean;
   item: SpotifyTrack;
+  progress_ms: number;
 }
 
 interface SpotifyRecentlyPlayed {
@@ -61,13 +68,16 @@ async function getAccessToken(): Promise<string> {
   return data.access_token;
 }
 
-function buildResponse(track: SpotifyTrack, isPlaying: boolean) {
+function buildResponse(track: SpotifyTrack, isPlaying: boolean, progressMs = 0) {
   return {
     isPlaying,
     track: track.name,
     artist: track.artists.map((a) => a.name).join(', '),
     albumArt: track.album.images[0]?.url ?? '',
     url: track.external_urls.spotify,
+    albumUrl: track.album.external_urls.spotify,
+    progressMs,
+    durationMs: track.duration_ms,
   };
 }
 
@@ -92,7 +102,7 @@ export const GET: APIRoute = async () => {
       const nowData = (await nowRes.json()) as SpotifyCurrentlyPlaying;
       if (nowData?.item) {
         return new Response(
-          JSON.stringify(buildResponse(nowData.item, nowData.is_playing)),
+          JSON.stringify(buildResponse(nowData.item, nowData.is_playing, nowData.progress_ms)),
           {
             status: 200,
             headers: {

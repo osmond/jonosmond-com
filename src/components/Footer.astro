@@ -1,0 +1,71 @@
+---
+const year = new Date().getFullYear();
+const links = [
+  { label: 'Email', href: 'mailto:jonathan.osmond@gmail.com' },
+  { label: 'GitHub', href: 'https://github.com/osmond' },
+  { label: 'LinkedIn', href: 'https://linkedin.com/in/josmond' },
+];
+---
+
+<footer class="footer">
+  <div class="footer__inner">
+    <span class="footer__copy">&copy; {year} Jon Osmond</span>
+    <nav class="footer__links" aria-label="Footer links">
+      {links.map(({ label, href }) => (
+        <a
+          href={href}
+          class="footer__link"
+          {...href.startsWith('http') ? { target: '_blank', rel: 'noopener noreferrer' } : {}}
+        >
+          {label}
+        </a>
+      ))}
+    </nav>
+  </div>
+</footer>
+
+<style>
+  .footer {
+    padding: clamp(2rem, 4vw, 3rem) clamp(2rem, 6vw, 5rem);
+    border-top: 1px solid rgba(245, 244, 240, 0.08);
+  }
+
+  .footer__inner {
+    max-width: 72rem;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  @media (max-width: 480px) {
+    .footer__inner {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+  }
+
+  .footer__copy {
+    font-family: var(--font-body);
+    font-size: 0.8125rem;
+    color: var(--color-muted);
+  }
+
+  .footer__links {
+    display: flex;
+    gap: 1.5rem;
+  }
+
+  .footer__link {
+    font-family: var(--font-body);
+    font-size: 0.8125rem;
+    color: var(--color-muted);
+    text-decoration: none;
+    transition: color 0.2s;
+  }
+
+  .footer__link:hover {
+    color: var(--color-text);
+  }
+</style>

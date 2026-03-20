@@ -1,4 +1,5 @@
 ---
+import { ClientRouter } from 'astro:transitions';
 import '../styles/global.css';
 
 interface Props {
@@ -12,6 +13,7 @@ const {
 } = Astro.props;
 
 const canonicalURL = new URL(Astro.url.pathname, Astro.site ?? 'https://jonosmond.com');
+const ogImage = new URL('/og.svg', Astro.site ?? 'https://jonosmond.com');
 ---
 
 <!doctype html>
@@ -27,9 +29,14 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site ?? 'https://jonosmon
     <meta property="og:url" content={canonicalURL} />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
+    <meta property="og:image" content={ogImage} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content={ogImage} />
 
     <title>{title}</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+
+    <ClientRouter />
   </head>
   <body>
     <slot />
