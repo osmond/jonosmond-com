@@ -1,0 +1,193 @@
+---
+// No server-side fetch here — data is loaded client-side to keep this component
+// prerenderable. The actual data comes from /api/spotify on the client.
+---
+
+<section class="currently">
+  <div class="currently__inner">
+    <span class="currently__label">Listening</span>
+    <div class="currently__content" id="spotify-widget">
+      <div class="currently__skeleton" aria-hidden="true"></div>
+    </div>
+  </div>
+</section>
+
+<template id="spotify-track">
+  <a class="track" href="" target="_blank" rel="noopener noreferrer">
+    <img class="track__art" src="" alt="" width="56" height="56" />
+    <div class="track__info">
+      <span class="track__name"></span>
+      <span class="track__artist"></span>
+    </div>
+    <div class="track__indicator" aria-label="Now playing">
+      <span></span><span></span><span></span>
+    </div>
+  </a>
+</template>
+
+<template id="spotify-idle">
+  <p class="idle">Nothing playing right now.</p>
+</template>
+
+<script>
+  async function loadSpotify() {
+    const widget = document.getElementById('spotify-widget');
+    if (!widget) return;
+
+    try {
+      const res = await fetch('/api/spotify');
+      if (!res.ok) throw new Error('non-ok response');
+      const data = await res.json() as {
+        isPlaying: boolean;
+        track: string;
+        artist: string;
+        albumArt: string;
+        url: string;
+      };
+
+      const tmpl = document.getElementById('spotify-track') as HTMLTemplateElement;
+      const node = tmpl.content.cloneNode(true) as DocumentFragment;
+
+      const link = node.querySelector<HTMLAnchorElement>('.track')!;
+      link.href = data.url;
+
+      const img = node.querySelector<HTMLImageElement>('.track__art')!;
+      img.src = data.albumArt;
+      img.alt = `${data.track} album art`;
+
+      node.querySelector('.track__name')!.textContent = data.track;
+      node.querySelector('.track__artist')!.textContent = data.artist;
+
+      const indicator = node.querySelector<HTMLElement>('.track__indicator')!;
+      if (!data.isPlaying) indicator.remove();
+
+      widget.replaceChildren(node);
+    } catch {
+      const tmpl = document.getElementById('spotify-idle') as HTMLTemplateElement;
+      const node = tmpl.content.cloneNode(true);
+      widget.replaceChildren(node);
+    }
+  }
+
+  loadSpotify();
+</script>
+
+<style>
+  .currently {
+    padding: clamp(4rem, 8vw, 7rem) clamp(2rem, 6vw, 5rem);
+    border-top: 1px solid rgba(245, 244, 240, 0.08);
+  }
+
+  .currently__inner {
+    max-width: 72rem;
+    width: 100%;
+    display: grid;
+    grid-template-columns: 8rem 1fr;
+    gap: 2rem;
+    align-items: center;
+  }
+
+  @media (max-width: 600px) {
+    .currently__inner {
+      grid-template-columns: 1fr;
+      gap: 1.25rem;
+    }
+  }
+
+  .currently__label {
+    font-family: var(--font-body);
+    font-size: 0.75rem;
+    font-weight: 500;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--color-accent);
+  }
+
+  /* skeleton */
+  .currently__skeleton {
+    height: 56px;
+    width: 240px;
+    border-radius: 8px;
+    background: rgba(245, 244, 240, 0.05);
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  /* track card */
+  :global(.track) {
+    display: inline-flex;
+    align-items: center;
+    gap: 1rem;
+    text-decoration: none;
+    color: var(--color-text);
+    transition: opacity 0.2s;
+  }
+
+  :global(.track:hover) {
+    opacity: 0.7;
+  }
+
+  :global(.track__art) {
+    width: 56px;
+    height: 56px;
+    border-radius: 6px;
+    object-fit: cover;
+    flex-shrink: 0;
+  }
+
+  :global(.track__info) {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+
+  :global(.track__name) {
+    font-family: var(--font-body);
+    font-size: 0.9375rem;
+    font-weight: 500;
+    color: var(--color-text);
+  }
+
+  :global(.track__artist) {
+    font-family: var(--font-body);
+    font-size: 0.8125rem;
+    color: var(--color-muted);
+  }
+
+  /* now playing bars */
+  :global(.track__indicator) {
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 16px;
+    margin-left: 0.25rem;
+  }
+
+  :global(.track__indicator span) {
+    display: block;
+    width: 3px;
+    background: var(--color-accent);
+    border-radius: 2px;
+    animation: bar 1s ease-in-out infinite;
+  }
+
+  :global(.track__indicator span:nth-child(1)) { height: 8px; animation-delay: 0s; }
+  :global(.track__indicator span:nth-child(2)) { height: 14px; animation-delay: 0.2s; }
+  :global(.track__indicator span:nth-child(3)) { height: 6px; animation-delay: 0.4s; }
+
+  @keyframes bar {
+    0%, 100% { transform: scaleY(0.4); }
+    50% { transform: scaleY(1); }
+  }
+
+  :global(.idle) {
+    font-family: var(--font-body);
+    font-size: 0.875rem;
+    color: var(--color-muted);
+    margin: 0;
+  }
+</style>

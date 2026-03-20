@@ -1,0 +1,23 @@
+---
+export const prerender = true;
+
+import Layout from '../layouts/Layout.astro';
+import Hero from '../components/Hero.astro';
+import About from '../components/About.astro';
+import Currently from '../components/Currently.astro';
+---
+
+<Layout>
+  <main>
+    <Hero />
+    <About />
+    <Currently />
+  </main>
+</Layout>
+
+<style>
+  main {
+    display: flex;
+    flex-direction: column;
+  }
+</style>
