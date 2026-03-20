@@ -138,8 +138,9 @@ export const GET: APIRoute = async () => {
       },
     });
   } catch (err) {
-    console.error('[/api/spotify]', err);
-    return new Response(JSON.stringify({ error: 'Internal error' }), {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('[/api/spotify]', message);
+    return new Response(JSON.stringify({ error: 'Internal error', detail: message }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
     });
