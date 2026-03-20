@@ -74,9 +74,9 @@ function buildResponse(track: SpotifyTrack, isPlaying: boolean, progressMs = 0) 
 }
 
 export const GET: APIRoute = async () => {
-  const SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID;
-  const SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET;
-  const SPOTIFY_REFRESH_TOKEN = process.env.SPOTIFY_REFRESH_TOKEN;
+  const SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID?.trim();
+  const SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET?.trim();
+  const SPOTIFY_REFRESH_TOKEN = process.env.SPOTIFY_REFRESH_TOKEN?.trim();
 
   if (!SPOTIFY_CLIENT_ID || !SPOTIFY_CLIENT_SECRET || !SPOTIFY_REFRESH_TOKEN) {
     return new Response(JSON.stringify({ error: 'Spotify not configured' }), {
@@ -140,7 +140,7 @@ export const GET: APIRoute = async () => {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error('[/api/spotify]', message);
-    return new Response(JSON.stringify({ error: 'Internal error', detail: message }), {
+    return new Response(JSON.stringify({ error: 'Internal error' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
     });
