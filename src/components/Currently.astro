@@ -1,28 +1,33 @@
 ---
-// No server-side fetch here — data is loaded client-side to keep this component
-// prerenderable. The actual data comes from /api/spotify on the client.
 ---
 
 <section class="currently">
+  <div class="currently__glow" id="currently-glow" aria-hidden="true"></div>
   <div class="currently__inner">
     <span class="currently__label">Listening</span>
     <div class="currently__content" id="spotify-widget">
-      <div class="currently__skeleton" aria-hidden="true"></div>
+      <div class="currently__skeleton" aria-hidden="true">
+        <div class="skeleton__title"></div>
+        <div class="skeleton__artist"></div>
+      </div>
     </div>
   </div>
 </section>
 
 <template id="spotify-track">
-  <a class="track" href="" target="_blank" rel="noopener noreferrer">
-    <img class="track__art" src="" alt="" width="56" height="56" />
-    <div class="track__info">
-      <span class="track__name"></span>
+  <div class="track">
+    <div class="track__text">
+      <div class="track__status">
+        <div class="track__indicator" aria-label="Now playing">
+          <span></span><span></span><span></span>
+        </div>
+        <span class="track__status-label"></span>
+      </div>
+      <a class="track__name" href="" target="_blank" rel="noopener noreferrer"></a>
       <span class="track__artist"></span>
     </div>
-    <div class="track__indicator" aria-label="Now playing">
-      <span></span><span></span><span></span>
-    </div>
-  </a>
+    <img class="track__art" src="" alt="" width="120" height="120" crossorigin="anonymous" />
+  </div>
 </template>
 
 <template id="spotify-idle">
@@ -30,61 +35,136 @@
 </template>
 
 <script>
-  async function loadSpotify() {
+  type SpotifyData = {
+    isPlaying: boolean;
+    track: string;
+    artist: string;
+    albumArt: string;
+    url: string;
+  };
+
+  let currentTrack = '';
+
+  async function extractColour(src: string): Promise<string> {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = 50;
+          canvas.height = 50;
+          const ctx = canvas.getContext('2d')!;
+          ctx.drawImage(img, 0, 0, 50, 50);
+          const data = ctx.getImageData(0, 0, 50, 50).data;
+          let r = 0, g = 0, b = 0, count = 0;
+          for (let i = 0; i < data.length; i += 4) {
+            const pr = data[i], pg = data[i + 1], pb = data[i + 2];
+            const brightness = (pr + pg + pb) / 3;
+            if (brightness > 25 && brightness < 230) {
+              r += pr; g += pg; b += pb; count++;
+            }
+          }
+          if (count > 0) {
+            resolve(`rgb(${Math.round(r / count)}, ${Math.round(g / count)}, ${Math.round(b / count)})`);
+          } else {
+            resolve('rgb(196, 107, 75)');
+          }
+        } catch {
+          resolve('rgb(196, 107, 75)');
+        }
+      };
+      img.onerror = () => resolve('rgb(196, 107, 75)');
+      img.src = src;
+    });
+  }
+
+  async function render(data: SpotifyData) {
+    const widget = document.getElementById('spotify-widget')!;
+    const glow = document.getElementById('currently-glow')!;
+
+    widget.style.opacity = '0';
+    await new Promise(r => setTimeout(r, 200));
+
+    const tmpl = document.getElementById('spotify-track') as HTMLTemplateElement;
+    const node = tmpl.content.cloneNode(true) as DocumentFragment;
+
+    const link = node.querySelector<HTMLAnchorElement>('.track__name')!;
+    link.href = data.url;
+    link.textContent = data.track;
+
+    node.querySelector('.track__artist')!.textContent = data.artist;
+
+    const img = node.querySelector<HTMLImageElement>('.track__art')!;
+    img.src = data.albumArt;
+    img.alt = `${data.track} album art`;
+
+    const indicator = node.querySelector<HTMLElement>('.track__indicator')!;
+    const statusLabel = node.querySelector<HTMLElement>('.track__status-label')!;
+
+    if (data.isPlaying) {
+      statusLabel.textContent = 'Now playing';
+    } else {
+      indicator.remove();
+      statusLabel.textContent = 'Last played';
+    }
+
+    widget.replaceChildren(node);
+    widget.style.opacity = '1';
+
+    const colour = await extractColour(data.albumArt);
+    glow.style.background = `radial-gradient(ellipse at 80% 50%, ${colour}30 0%, transparent 65%)`;
+  }
+
+  async function loadSpotify(force = false) {
     const widget = document.getElementById('spotify-widget');
     if (!widget) return;
 
     try {
       const res = await fetch('/api/spotify');
-      if (!res.ok) throw new Error('non-ok response');
-      const data = await res.json() as {
-        isPlaying: boolean;
-        track: string;
-        artist: string;
-        albumArt: string;
-        url: string;
-      };
+      if (!res.ok) throw new Error('non-ok');
+      const data = await res.json() as SpotifyData;
 
-      const tmpl = document.getElementById('spotify-track') as HTMLTemplateElement;
-      const node = tmpl.content.cloneNode(true) as DocumentFragment;
-
-      const link = node.querySelector<HTMLAnchorElement>('.track')!;
-      link.href = data.url;
-
-      const img = node.querySelector<HTMLImageElement>('.track__art')!;
-      img.src = data.albumArt;
-      img.alt = `${data.track} album art`;
-
-      node.querySelector('.track__name')!.textContent = data.track;
-      node.querySelector('.track__artist')!.textContent = data.artist;
-
-      const indicator = node.querySelector<HTMLElement>('.track__indicator')!;
-      if (!data.isPlaying) indicator.remove();
-
-      widget.replaceChildren(node);
+      if (force || data.track !== currentTrack) {
+        currentTrack = data.track;
+        await render(data);
+      }
     } catch {
-      const tmpl = document.getElementById('spotify-idle') as HTMLTemplateElement;
-      const node = tmpl.content.cloneNode(true);
-      widget.replaceChildren(node);
+      if (force) {
+        const tmpl = document.getElementById('spotify-idle') as HTMLTemplateElement;
+        const node = tmpl.content.cloneNode(true);
+        widget.replaceChildren(node);
+      }
     }
   }
 
-  loadSpotify();
+  loadSpotify(true);
+  setInterval(() => loadSpotify(false), 30_000);
 </script>
 
 <style>
   .currently {
+    position: relative;
+    overflow: hidden;
     padding: clamp(4rem, 8vw, 7rem) clamp(2rem, 6vw, 5rem);
     border-top: 1px solid rgba(245, 244, 240, 0.08);
   }
 
+  .currently__glow {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    transition: background 1.5s ease;
+  }
+
   .currently__inner {
+    position: relative;
     max-width: 72rem;
     width: 100%;
     display: grid;
     grid-template-columns: 8rem 1fr;
     gap: 2rem;
-    align-items: center;
+    align-items: start;
   }
 
   @media (max-width: 600px) {
@@ -101,70 +181,108 @@
     letter-spacing: 0.18em;
     text-transform: uppercase;
     color: var(--color-accent);
+    padding-top: 0.5rem;
   }
 
-  /* skeleton */
+  .currently__content {
+    transition: opacity 0.2s ease;
+  }
+
   .currently__skeleton {
-    height: 56px;
-    width: 240px;
-    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding-top: 0.25rem;
+  }
+
+  .skeleton__title {
+    height: clamp(2rem, 4vw, 3rem);
+    width: clamp(240px, 50%, 480px);
+    border-radius: 4px;
     background: rgba(245, 244, 240, 0.05);
     animation: pulse 1.6s ease-in-out infinite;
   }
 
+  .skeleton__artist {
+    height: 1rem;
+    width: 160px;
+    border-radius: 4px;
+    background: rgba(245, 244, 240, 0.04);
+    animation: pulse 1.6s ease-in-out infinite 0.3s;
+  }
+
   @keyframes pulse {
     0%, 100% { opacity: 1; }
-    50% { opacity: 0.4; }
+    50% { opacity: 0.3; }
   }
 
-  /* track card */
   :global(.track) {
-    display: inline-flex;
-    align-items: center;
-    gap: 1rem;
-    text-decoration: none;
-    color: var(--color-text);
-    transition: opacity 0.2s;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 2rem;
   }
 
-  :global(.track:hover) {
-    opacity: 0.7;
-  }
-
-  :global(.track__art) {
-    width: 56px;
-    height: 56px;
-    border-radius: 6px;
-    object-fit: cover;
-    flex-shrink: 0;
-  }
-
-  :global(.track__info) {
+  :global(.track__text) {
     display: flex;
     flex-direction: column;
-    gap: 0.2rem;
+    gap: 0.5rem;
+    min-width: 0;
+  }
+
+  :global(.track__status) {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  :global(.track__status-label) {
+    font-family: var(--font-body);
+    font-size: 0.75rem;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--color-muted);
   }
 
   :global(.track__name) {
-    font-family: var(--font-body);
-    font-size: 0.9375rem;
-    font-weight: 500;
+    font-family: var(--font-display);
+    font-size: clamp(2rem, 5vw, 4.5rem);
+    line-height: 1;
+    letter-spacing: -0.02em;
     color: var(--color-text);
+    text-decoration: none;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    transition: color 0.2s;
+  }
+
+  :global(.track__name:hover) {
+    color: var(--color-accent);
   }
 
   :global(.track__artist) {
     font-family: var(--font-body);
-    font-size: 0.8125rem;
+    font-size: clamp(0.875rem, 1.4vw, 1.125rem);
     color: var(--color-muted);
   }
 
-  /* now playing bars */
+  :global(.track__art) {
+    width: clamp(80px, 10vw, 120px);
+    height: clamp(80px, 10vw, 120px);
+    border-radius: 8px;
+    object-fit: cover;
+    flex-shrink: 0;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+
   :global(.track__indicator) {
     display: flex;
     align-items: flex-end;
     gap: 2px;
-    height: 16px;
-    margin-left: 0.25rem;
+    height: 14px;
   }
 
   :global(.track__indicator span) {
@@ -175,9 +293,9 @@
     animation: bar 1s ease-in-out infinite;
   }
 
-  :global(.track__indicator span:nth-child(1)) { height: 8px; animation-delay: 0s; }
-  :global(.track__indicator span:nth-child(2)) { height: 14px; animation-delay: 0.2s; }
-  :global(.track__indicator span:nth-child(3)) { height: 6px; animation-delay: 0.4s; }
+  :global(.track__indicator span:nth-child(1)) { height: 6px; animation-delay: 0s; }
+  :global(.track__indicator span:nth-child(2)) { height: 12px; animation-delay: 0.2s; }
+  :global(.track__indicator span:nth-child(3)) { height: 5px; animation-delay: 0.4s; }
 
   @keyframes bar {
     0%, 100% { transform: scaleY(0.4); }
@@ -185,8 +303,8 @@
   }
 
   :global(.idle) {
-    font-family: var(--font-body);
-    font-size: 0.875rem;
+    font-family: var(--font-display);
+    font-size: clamp(1.5rem, 3vw, 2.5rem);
     color: var(--color-muted);
     margin: 0;
   }
