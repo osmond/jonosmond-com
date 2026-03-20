@@ -2,12 +2,6 @@ export const prerender = false;
 
 import type { APIRoute } from 'astro';
 
-const {
-  SPOTIFY_CLIENT_ID,
-  SPOTIFY_CLIENT_SECRET,
-  SPOTIFY_REFRESH_TOKEN,
-} = import.meta.env;
-
 interface SpotifyTokenResponse {
   access_token: string;
 }
@@ -43,10 +37,8 @@ interface SpotifyRecentlyPlayed {
   items: Array<{ track: SpotifyTrack }>;
 }
 
-async function getAccessToken(): Promise<string> {
-  const credentials = Buffer.from(
-    `${SPOTIFY_CLIENT_ID}:${SPOTIFY_CLIENT_SECRET}`
-  ).toString('base64');
+async function getAccessToken(clientId: string, clientSecret: string, refreshToken: string): Promise<string> {
+  const credentials = btoa(`${clientId}:${clientSecret}`);
 
   const res = await fetch('https://accounts.spotify.com/api/token', {
     method: 'POST',
@@ -56,7 +48,7 @@ async function getAccessToken(): Promise<string> {
     },
     body: new URLSearchParams({
       grant_type: 'refresh_token',
-      refresh_token: SPOTIFY_REFRESH_TOKEN,
+      refresh_token: refreshToken,
     }),
   });
 
@@ -75,13 +67,17 @@ function buildResponse(track: SpotifyTrack, isPlaying: boolean, progressMs = 0) 
     artist: track.artists.map((a) => a.name).join(', '),
     albumArt: track.album.images[0]?.url ?? '',
     url: track.external_urls.spotify,
-    albumUrl: track.album.external_urls.spotify,
+    albumUrl: track.album.external_urls?.spotify ?? track.external_urls.spotify,
     progressMs,
-    durationMs: track.duration_ms,
+    durationMs: track.duration_ms ?? 0,
   };
 }
 
 export const GET: APIRoute = async () => {
+  const SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID;
+  const SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET;
+  const SPOTIFY_REFRESH_TOKEN = process.env.SPOTIFY_REFRESH_TOKEN;
+
   if (!SPOTIFY_CLIENT_ID || !SPOTIFY_CLIENT_SECRET || !SPOTIFY_REFRESH_TOKEN) {
     return new Response(JSON.stringify({ error: 'Spotify not configured' }), {
       status: 503,
@@ -90,7 +86,7 @@ export const GET: APIRoute = async () => {
   }
 
   try {
-    const token = await getAccessToken();
+    const token = await getAccessToken(SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, SPOTIFY_REFRESH_TOKEN);
 
     // Try currently playing first
     const nowRes = await fetch(
