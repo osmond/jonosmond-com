@@ -3,14 +3,6 @@ export const prerender = false;
 
 import '../styles/global.css';
 
-// ─── Auth ────────────────────────────────────────────────────────────────────
-const secret = Astro.url.searchParams.get('s');
-const expectedSecret = (import.meta.env.ANALYTICS_SECRET as string | undefined)?.trim();
-
-if (!expectedSecret || secret !== expectedSecret) {
-  return Astro.redirect('/');
-}
-
 // ─── Redis helper ─────────────────────────────────────────────────────────────
 const redisUrl = import.meta.env.UPSTASH_REDIS_REST_URL as string;
 const redisToken = import.meta.env.UPSTASH_REDIS_REST_TOKEN as string;
@@ -103,7 +95,7 @@ function fmtNum(n: number) {
         <h1>Analytics</h1>
         <p class="updated">
           Updated just now &middot;
-          <a href={`?s=${secret}`} class="refresh">Refresh</a>
+          <a href="/analytics" class="refresh">Refresh</a>
         </p>
       </header>
 
