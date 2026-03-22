@@ -5,7 +5,7 @@ import '../styles/global.css';
 
 // ─── Auth ────────────────────────────────────────────────────────────────────
 const secret = Astro.url.searchParams.get('s');
-const expectedSecret = import.meta.env.ANALYTICS_SECRET;
+const expectedSecret = (import.meta.env.ANALYTICS_SECRET as string | undefined)?.trim();
 
 if (!expectedSecret || secret !== expectedSecret) {
   return Astro.redirect('/');
