@@ -132,11 +132,14 @@ function flag(code: string): string {
     <div class="page">
 
       <header class="header">
-        <h1>Analytics</h1>
-        <p class="updated">
-          Updated just now &middot;
-          <a href="/analytics" class="refresh" onclick="event.preventDefault();location.reload()">Refresh</a>
-        </p>
+        <a href="/" class="back-link">&larr; jonosmond.com</a>
+        <div class="header-row">
+          <h1>Analytics</h1>
+          <div class="header-actions">
+            <button id="opt-out-btn" class="opt-btn"></button>
+            <a href="/analytics" class="refresh" onclick="event.preventDefault();location.reload()">Refresh</a>
+          </div>
+        </div>
       </header>
 
       <!-- Stats -->
@@ -265,6 +268,26 @@ function flag(code: string): string {
     </div>
 
     <script>
+      // ── Opt-out toggle ──────────────────────────────────────────────────────
+      const OPT_OUT_KEY = 'analytics_opt_out';
+      const btn = document.getElementById('opt-out-btn') as HTMLButtonElement | null;
+      function updateBtn() {
+        if (!btn) return;
+        const excluded = localStorage.getItem(OPT_OUT_KEY) === '1';
+        btn.textContent = excluded ? 'You are excluded from data' : 'Exclude me from data';
+        btn.classList.toggle('excluded', excluded);
+      }
+      updateBtn();
+      btn?.addEventListener('click', () => {
+        const excluded = localStorage.getItem(OPT_OUT_KEY) === '1';
+        if (excluded) {
+          localStorage.removeItem(OPT_OUT_KEY);
+        } else {
+          localStorage.setItem(OPT_OUT_KEY, '1');
+        }
+        updateBtn();
+      });
+
       const chart = document.getElementById('chart');
       const btns  = document.querySelectorAll<HTMLButtonElement>('.toggle-btn');
       if (chart && btns.length) {
@@ -317,8 +340,48 @@ function flag(code: string): string {
     margin: 0 0 0.5rem;
   }
 
-  a.refresh { color: var(--color-accent); text-decoration: none; }
+  a.refresh { color: var(--color-accent); text-decoration: none; font-size: 0.8125rem; }
   a.refresh:hover { text-decoration: underline; }
+
+  /* ── Back link ── */
+  .back-link {
+    display: inline-block;
+    font-size: 0.8125rem;
+    color: var(--color-muted);
+    text-decoration: none;
+    margin-bottom: 0.75rem;
+    transition: color 0.1s;
+  }
+  .back-link:hover { color: var(--color-text); }
+
+  /* ── Header row ── */
+  .header-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  /* ── Opt-out button ── */
+  .opt-btn {
+    background: none;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    color: var(--color-muted);
+    font-family: var(--font-body);
+    font-size: 0.75rem;
+    padding: 0.25rem 0.625rem;
+    cursor: pointer;
+    transition: border-color 0.1s, color 0.1s;
+  }
+  .opt-btn:hover { border-color: var(--color-border-highlight); color: var(--color-text); }
+  .opt-btn.excluded { border-color: #6aaf82; color: #6aaf82; }
 
   /* ── Stats grid ── */
   .stats-grid {
