@@ -3,6 +3,9 @@ export const prerender = false;
 
 import '../styles/global.css';
 
+// Prevent Vercel / browser from caching this page
+Astro.response.headers.set('Cache-Control', 'no-store');
+
 // ─── Redis helper ─────────────────────────────────────────────────────────────
 const redisUrl = import.meta.env.UPSTASH_REDIS_REST_URL as string;
 const redisToken = import.meta.env.UPSTASH_REDIS_REST_TOKEN as string;
@@ -95,7 +98,7 @@ function fmtNum(n: number) {
         <h1>Analytics</h1>
         <p class="updated">
           Updated just now &middot;
-          <a href="/analytics" class="refresh">Refresh</a>
+          <a href="/analytics" class="refresh" onclick="event.preventDefault();location.reload()">Refresh</a>
         </p>
       </header>
 
