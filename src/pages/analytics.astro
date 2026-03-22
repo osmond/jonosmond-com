@@ -37,16 +37,23 @@ const days = Array.from({ length: N }, (_, i) => {
 // [0]       pv:total
 // [1..N]    pv:day — views per day (30 values)
 // [N+1..2N] visitors:day SCARD — unique visitors per day (30 values)
-// [2N+1]    top pages
-// [2N+2]    top referrers
-// [2N+3]    top countries
+// [2N+1] pages  [2N+2] referrers  [2N+3] countries  [2N+4] cities
+// [2N+5] browsers  [2N+6] os  [2N+7] devices  [2N+8] timezones
+// [2N+9] colorSchemes  [2N+10] viewports
 const results = await redisPipeline([
   ['GET', 'pv:total'],
   ...days.map(d => ['GET',   `pv:day:${d}`]),
   ...days.map(d => ['SCARD', `visitors:day:${d}`]),
-  ['ZREVRANGE', 'pages',     0, 9, 'WITHSCORES'],
-  ['ZREVRANGE', 'referrers', 0, 9, 'WITHSCORES'],
-  ['ZREVRANGE', 'countries', 0, 9, 'WITHSCORES'],
+  ['ZREVRANGE', 'pages',        0, 9, 'WITHSCORES'],
+  ['ZREVRANGE', 'referrers',    0, 9, 'WITHSCORES'],
+  ['ZREVRANGE', 'countries',    0, 9, 'WITHSCORES'],
+  ['ZREVRANGE', 'cities',       0, 9, 'WITHSCORES'],
+  ['ZREVRANGE', 'browsers',     0, 9, 'WITHSCORES'],
+  ['ZREVRANGE', 'os',           0, 9, 'WITHSCORES'],
+  ['ZREVRANGE', 'devices',      0, 4, 'WITHSCORES'],
+  ['ZREVRANGE', 'timezones',    0, 9, 'WITHSCORES'],
+  ['ZREVRANGE', 'colorSchemes', 0, 4, 'WITHSCORES'],
+  ['ZREVRANGE', 'viewports',    0, 4, 'WITHSCORES'],
 ]);
 
 // ─── Parse ────────────────────────────────────────────────────────────────────
@@ -71,9 +78,16 @@ function parseZSet(raw: unknown) {
   return out;
 }
 
-const topPages     = parseZSet(results[2 * N + 1]);
-const topReferrers = parseZSet(results[2 * N + 2]);
-const topCountries = parseZSet(results[2 * N + 3]);
+const topPages      = parseZSet(results[2 * N + 1]);
+const topReferrers  = parseZSet(results[2 * N + 2]);
+const topCountries  = parseZSet(results[2 * N + 3]);
+const topCities     = parseZSet(results[2 * N + 4]);
+const topBrowsers   = parseZSet(results[2 * N + 5]);
+const topOS         = parseZSet(results[2 * N + 6]);
+const topDevices    = parseZSet(results[2 * N + 7]);
+const topTimezones  = parseZSet(results[2 * N + 8]);
+const colorSchemes  = parseZSet(results[2 * N + 9]);
+const topViewports  = parseZSet(results[2 * N + 10]);
 
 // ─── Computed stats ───────────────────────────────────────────────────────────
 const todayViews        = dailyViews[N - 1]!.views;
@@ -243,25 +257,153 @@ function flag(code: string): string {
         )}
       </div>
 
-      <!-- Countries -->
-      {topCountries.length > 0 && (
-        <div class="card">
-          <h2 class="section-title">Countries</h2>
-          <div class="countries">
-            {topCountries.map(c => (
-              <div class="country-row">
-                <span class="country-flag">{flag(c.name)}</span>
-                <span class="country-code">{c.name}</span>
-                <div class="country-bar-wrap">
-                  <div
-                    class="country-bar"
-                    style={`width:${((c.count / topCountries[0]!.count) * 100).toFixed(1)}%`}
-                  ></div>
-                </div>
-                <span class="country-count">{fmtNum(c.count)}</span>
+      <!-- Countries + Cities -->
+      {(topCountries.length > 0 || topCities.length > 0) && (
+        <div class="two-col">
+          {topCountries.length > 0 && (
+            <div class="card">
+              <h2 class="section-title">Countries</h2>
+              <div class="countries">
+                {topCountries.map(c => (
+                  <div class="country-row">
+                    <span class="country-flag">{flag(c.name)}</span>
+                    <span class="country-code">{c.name}</span>
+                    <div class="country-bar-wrap">
+                      <div
+                        class="country-bar"
+                        style={`width:${((c.count / topCountries[0]!.count) * 100).toFixed(1)}%`}
+                      ></div>
+                    </div>
+                    <span class="country-count">{fmtNum(c.count)}</span>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </div>
+          )}
+          {topCities.length > 0 && (
+            <div class="card">
+              <h2 class="section-title">Cities</h2>
+              <table class="data-table">
+                <thead><tr><th>City</th><th>Views</th></tr></thead>
+                <tbody>
+                  {topCities.map(c => (
+                    <tr>
+                      <td>{c.name}</td>
+                      <td class="num">{fmtNum(c.count)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      <!-- Devices + Browsers + OS -->
+      {(topDevices.length > 0 || topBrowsers.length > 0 || topOS.length > 0) && (
+        <div class="three-col">
+          {topDevices.length > 0 && (
+            <div class="card">
+              <h2 class="section-title">Devices</h2>
+              <table class="data-table">
+                <thead><tr><th>Type</th><th>Views</th></tr></thead>
+                <tbody>
+                  {topDevices.map(d => (
+                    <tr>
+                      <td>{d.name}</td>
+                      <td class="num">{fmtNum(d.count)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {topBrowsers.length > 0 && (
+            <div class="card">
+              <h2 class="section-title">Browsers</h2>
+              <table class="data-table">
+                <thead><tr><th>Browser</th><th>Views</th></tr></thead>
+                <tbody>
+                  {topBrowsers.map(b => (
+                    <tr>
+                      <td>{b.name}</td>
+                      <td class="num">{fmtNum(b.count)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {topOS.length > 0 && (
+            <div class="card">
+              <h2 class="section-title">Operating Systems</h2>
+              <table class="data-table">
+                <thead><tr><th>OS</th><th>Views</th></tr></thead>
+                <tbody>
+                  {topOS.map(o => (
+                    <tr>
+                      <td>{o.name}</td>
+                      <td class="num">{fmtNum(o.count)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      <!-- Timezones + Color scheme + Viewport -->
+      {(topTimezones.length > 0 || colorSchemes.length > 0 || topViewports.length > 0) && (
+        <div class="three-col">
+          {topTimezones.length > 0 && (
+            <div class="card">
+              <h2 class="section-title">Timezones</h2>
+              <table class="data-table">
+                <thead><tr><th>Timezone</th><th>Views</th></tr></thead>
+                <tbody>
+                  {topTimezones.map(t => (
+                    <tr>
+                      <td class="mono" style="font-size:0.75rem">{t.name}</td>
+                      <td class="num">{fmtNum(t.count)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {colorSchemes.length > 0 && (
+            <div class="card">
+              <h2 class="section-title">Color scheme</h2>
+              <table class="data-table">
+                <thead><tr><th>Scheme</th><th>Views</th></tr></thead>
+                <tbody>
+                  {colorSchemes.map(s => (
+                    <tr>
+                      <td>{s.name}</td>
+                      <td class="num">{fmtNum(s.count)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {topViewports.length > 0 && (
+            <div class="card">
+              <h2 class="section-title">Viewport</h2>
+              <table class="data-table">
+                <thead><tr><th>Size</th><th>Views</th></tr></thead>
+                <tbody>
+                  {topViewports.map(v => (
+                    <tr>
+                      <td>{v.name}</td>
+                      <td class="num">{fmtNum(v.count)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 
@@ -525,6 +667,24 @@ function flag(code: string): string {
 
   @media (max-width: 600px) {
     .bottom-grid { grid-template-columns: 1fr; }
+  }
+
+  /* ── Two-col + three-col grids ── */
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+  }
+
+  .three-col {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.75rem;
+  }
+
+  @media (max-width: 768px) {
+    .two-col   { grid-template-columns: 1fr; }
+    .three-col { grid-template-columns: 1fr; }
   }
 
   /* ── Data table ── */

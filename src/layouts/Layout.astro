@@ -45,7 +45,13 @@ const ogImage = new URL('/og.svg', Astro.site ?? 'https://jonosmond.com');
       const isAnalytics = window.location.pathname.startsWith('/analytics');
       const isOptedOut  = localStorage.getItem('analytics_opt_out') === '1';
       if (!isAnalytics && !isOptedOut) {
-        const payload = JSON.stringify({ page: window.location.pathname, referrer: document.referrer });
+        const w = window.innerWidth;
+        const payload = JSON.stringify({
+          page: window.location.pathname,
+          referrer: document.referrer,
+          colorScheme: window.matchMedia('(prefers-color-scheme: dark)').matches ? 'Dark' : 'Light',
+          viewport: w < 768 ? 'Mobile' : w < 1024 ? 'Tablet' : 'Desktop',
+        });
         if (typeof navigator.sendBeacon === 'function') {
           navigator.sendBeacon('/api/track', new Blob([payload], { type: 'application/json' }));
         } else {
