@@ -43,7 +43,7 @@ const ogImage = new URL('/og.svg', Astro.site ?? 'https://jonosmond.com');
     <script>
       // Don't self-track the analytics dashboard
       if (!window.location.pathname.startsWith('/analytics')) {
-        const payload = JSON.stringify({ page: window.location.pathname });
+        const payload = JSON.stringify({ page: window.location.pathname, referrer: document.referrer });
         if (typeof navigator.sendBeacon === 'function') {
           navigator.sendBeacon('/api/track', new Blob([payload], { type: 'application/json' }));
         } else {

@@ -3,11 +3,10 @@ export const prerender = false;
 
 import '../styles/global.css';
 
-// Prevent Vercel / browser from caching this page
 Astro.response.headers.set('Cache-Control', 'no-store');
 
-// ─── Redis helper ─────────────────────────────────────────────────────────────
-const redisUrl = import.meta.env.UPSTASH_REDIS_REST_URL as string;
+// ─── Redis ────────────────────────────────────────────────────────────────────
+const redisUrl   = import.meta.env.UPSTASH_REDIS_REST_URL   as string;
 const redisToken = import.meta.env.UPSTASH_REDIS_REST_TOKEN as string;
 
 type PipelineResult = Array<{ result: unknown; error?: string }>;
@@ -22,14 +21,11 @@ async function redisPipeline(commands: (string | number)[][]): Promise<unknown[]
     body: JSON.stringify(commands),
   });
   const json = await res.json();
-  if (!Array.isArray(json)) {
-    // Return nulls so the page still renders with zeros
-    return commands.map(() => null);
-  }
+  if (!Array.isArray(json)) return commands.map(() => null);
   return (json as PipelineResult).map(item => item.result ?? null);
 }
 
-// ─── Build 30-day date range ──────────────────────────────────────────────────
+// ─── 30-day range ─────────────────────────────────────────────────────────────
 const N = 30;
 const days = Array.from({ length: N }, (_, i) => {
   const d = new Date();
@@ -37,15 +33,23 @@ const days = Array.from({ length: N }, (_, i) => {
   return d.toISOString().slice(0, 10);
 });
 
-// ─── Fetch all data in one pipeline ──────────────────────────────────────────
+// ─── One-shot pipeline ────────────────────────────────────────────────────────
+// [0]       pv:total
+// [1..N]    pv:day — views per day (30 values)
+// [N+1..2N] visitors:day SCARD — unique visitors per day (30 values)
+// [2N+1]    top pages
+// [2N+2]    top referrers
+// [2N+3]    top countries
 const results = await redisPipeline([
   ['GET', 'pv:total'],
-  ...days.map(d => ['GET', `pv:day:${d}`]),
+  ...days.map(d => ['GET',   `pv:day:${d}`]),
   ...days.map(d => ['SCARD', `visitors:day:${d}`]),
-  ['ZREVRANGE', 'pages', 0, 9, 'WITHSCORES'],
+  ['ZREVRANGE', 'pages',     0, 9, 'WITHSCORES'],
+  ['ZREVRANGE', 'referrers', 0, 9, 'WITHSCORES'],
+  ['ZREVRANGE', 'countries', 0, 9, 'WITHSCORES'],
 ]);
 
-// ─── Parse results ────────────────────────────────────────────────────────────
+// ─── Parse ────────────────────────────────────────────────────────────────────
 const totalViews = Number(results[0] ?? 0);
 
 const dailyViews = days.map((date, i) => ({
@@ -58,28 +62,61 @@ const dailyVisitors = days.map((date, i) => ({
   visitors: Number(results[1 + N + i] ?? 0),
 }));
 
-const pagesRaw = (results[1 + N * 2] ?? []) as string[];
-const topPages: { path: string; views: number }[] = [];
-for (let i = 0; i < pagesRaw.length; i += 2) {
-  topPages.push({ path: pagesRaw[i]!, views: Number(pagesRaw[i + 1]) });
+function parseZSet(raw: unknown) {
+  const arr = (raw ?? []) as string[];
+  const out: { name: string; count: number }[] = [];
+  for (let i = 0; i < arr.length; i += 2) {
+    out.push({ name: arr[i]!, count: Number(arr[i + 1]) });
+  }
+  return out;
 }
 
-// ─── Computed stats ───────────────────────────────────────────────────────────
-const todayViews    = dailyViews[N - 1]!.views;
-const todayVisitors = dailyVisitors[N - 1]!.visitors;
-const sevenDayViews = dailyViews.slice(-7).reduce((s, d) => s + d.views, 0);
+const topPages     = parseZSet(results[2 * N + 1]);
+const topReferrers = parseZSet(results[2 * N + 2]);
+const topCountries = parseZSet(results[2 * N + 3]);
 
-// ─── Chart (last 14 days) ─────────────────────────────────────────────────────
-const chartData = dailyViews.slice(-14);
-const maxVal    = Math.max(...chartData.map(d => d.views), 1);
+// ─── Computed stats ───────────────────────────────────────────────────────────
+const todayViews        = dailyViews[N - 1]!.views;
+const yesterdayViews    = dailyViews[N - 2]!.views;
+const todayVisitors     = dailyVisitors[N - 1]!.visitors;
+const yesterdayVisitors = dailyVisitors[N - 2]!.visitors;
+const sevenDayViews     = dailyViews.slice(N - 7).reduce((s, d) => s + d.views, 0);
+const lastWeekViews     = dailyViews.slice(N - 14, N - 7).reduce((s, d) => s + d.views, 0);
+
+// ─── Week-over-week deltas ────────────────────────────────────────────────────
+type Delta = { pct: number; positive: boolean } | null;
+
+function calcDelta(curr: number, prev: number): Delta {
+  if (prev === 0) return null;
+  const pct = Math.round(((curr - prev) / prev) * 100);
+  return { pct, positive: pct >= 0 };
+}
+
+const delta7Day    = calcDelta(sevenDayViews, lastWeekViews);
+const deltaToday   = calcDelta(todayViews, yesterdayViews);
+const deltaVisitor = calcDelta(todayVisitors, yesterdayVisitors);
+
+// ─── Chart helpers ────────────────────────────────────────────────────────────
+const maxViews    = Math.max(...dailyViews.map(d => d.views), 1);
+const maxVisitors = Math.max(...dailyVisitors.map(d => d.visitors), 1);
+
+function barH(val: number, max: number) {
+  return val > 0 ? Math.max((val / max) * 100, 3).toFixed(1) : '0';
+}
 
 function fmtDate(iso: string) {
   const [, m, d] = iso.split('-');
   return `${parseInt(m!)}/${parseInt(d!)}`;
 }
 
-function fmtNum(n: number) {
-  return n.toLocaleString('en-US');
+function fmtNum(n: number) { return n.toLocaleString('en-US'); }
+
+function flag(code: string): string {
+  if (code.length !== 2) return '';
+  return String.fromCodePoint(
+    0x1F1E6 + code.toUpperCase().charCodeAt(0) - 65,
+    0x1F1E6 + code.toUpperCase().charCodeAt(1) - 65,
+  );
 }
 ---
 
@@ -102,7 +139,7 @@ function fmtNum(n: number) {
         </p>
       </header>
 
-      <!-- Stats grid -->
+      <!-- Stats -->
       <div class="stats-grid">
         <div class="card">
           <div class="stat-value">{fmtNum(totalViews)}</div>
@@ -111,57 +148,140 @@ function fmtNum(n: number) {
         <div class="card">
           <div class="stat-value">{fmtNum(sevenDayViews)}</div>
           <div class="stat-label">Last 7 days</div>
+          {delta7Day && (
+            <div class={`stat-delta ${delta7Day.positive ? 'pos' : 'neg'}`}>
+              {delta7Day.positive ? '+' : ''}{delta7Day.pct}% vs prev week
+            </div>
+          )}
         </div>
         <div class="card">
           <div class="stat-value">{fmtNum(todayViews)}</div>
           <div class="stat-label">Today's views</div>
+          {deltaToday && (
+            <div class={`stat-delta ${deltaToday.positive ? 'pos' : 'neg'}`}>
+              {deltaToday.positive ? '+' : ''}{deltaToday.pct}% vs yesterday
+            </div>
+          )}
         </div>
         <div class="card">
           <div class="stat-value">{fmtNum(todayVisitors)}</div>
           <div class="stat-label">Today's visitors</div>
-        </div>
-      </div>
-
-      <!-- Bar chart: last 14 days -->
-      <div class="card chart-card">
-        <h2 class="section-title">Last 14 days</h2>
-        <div class="chart">
-          {chartData.map(day => (
-            <div class="bar-wrap" title={`${fmtNum(day.views)} views · ${day.date}`}>
-              <div
-                class="bar"
-                style={`height: ${day.views > 0 ? Math.max((day.views / maxVal) * 100, 4) : 0}%`}
-              ></div>
-              <span class="bar-label">{fmtDate(day.date)}</span>
+          {deltaVisitor && (
+            <div class={`stat-delta ${deltaVisitor.positive ? 'pos' : 'neg'}`}>
+              {deltaVisitor.positive ? '+' : ''}{deltaVisitor.pct}% vs yesterday
             </div>
-          ))}
+          )}
         </div>
       </div>
 
-      <!-- Top pages -->
-      {topPages.length > 0 && (
+      <!-- 30-day chart with views / visitors toggle -->
+      <div class="card chart-card">
+        <div class="chart-header">
+          <h2 class="section-title">Last 30 days</h2>
+          <div class="chart-toggle" role="group" aria-label="Chart metric">
+            <button class="toggle-btn active" data-mode="views">Views</button>
+            <button class="toggle-btn" data-mode="visitors">Visitors</button>
+          </div>
+        </div>
+        <div class="chart" id="chart">
+          {dailyViews.map((day, i) => {
+            const vh = barH(day.views, maxViews);
+            const uh = barH(dailyVisitors[i]!.visitors, maxVisitors);
+            const showLabel = i % 5 === 0 || i === N - 1;
+            return (
+              <div class="bar-wrap"
+                data-vh={vh}
+                data-uh={uh}
+                data-vc={day.views}
+                data-uc={dailyVisitors[i]!.visitors}
+                data-date={day.date}
+                title={`${fmtNum(day.views)} views · ${day.date}`}>
+                <div class="bar" style={`height:${vh}%`}></div>
+                <span class="bar-label">{showLabel ? fmtDate(day.date) : ''}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <!-- Pages + Sources -->
+      <div class={`bottom-grid${topReferrers.length === 0 ? ' single' : ''}`}>
+        {topPages.length > 0 && (
+          <div class="card">
+            <h2 class="section-title">Top pages</h2>
+            <table class="data-table">
+              <thead><tr><th>Page</th><th>Views</th></tr></thead>
+              <tbody>
+                {topPages.map(p => (
+                  <tr>
+                    <td class="mono">{p.name}</td>
+                    <td class="num">{fmtNum(p.count)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {topReferrers.length > 0 && (
+          <div class="card">
+            <h2 class="section-title">Top sources</h2>
+            <table class="data-table">
+              <thead><tr><th>Source</th><th>Views</th></tr></thead>
+              <tbody>
+                {topReferrers.map(r => (
+                  <tr>
+                    <td class={r.name === 'Direct' ? 'muted' : ''}>{r.name}</td>
+                    <td class="num">{fmtNum(r.count)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <!-- Countries -->
+      {topCountries.length > 0 && (
         <div class="card">
-          <h2 class="section-title">Top pages</h2>
-          <table class="pages-table">
-            <thead>
-              <tr>
-                <th>Page</th>
-                <th>Views</th>
-              </tr>
-            </thead>
-            <tbody>
-              {topPages.map(p => (
-                <tr>
-                  <td class="path">{p.path}</td>
-                  <td class="count">{fmtNum(p.views)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <h2 class="section-title">Countries</h2>
+          <div class="countries">
+            {topCountries.map(c => (
+              <div class="country-row">
+                <span class="country-flag">{flag(c.name)}</span>
+                <span class="country-code">{c.name}</span>
+                <div class="country-bar-wrap">
+                  <div
+                    class="country-bar"
+                    style={`width:${((c.count / topCountries[0]!.count) * 100).toFixed(1)}%`}
+                  ></div>
+                </div>
+                <span class="country-count">{fmtNum(c.count)}</span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
     </div>
+
+    <script>
+      const chart = document.getElementById('chart');
+      const btns  = document.querySelectorAll<HTMLButtonElement>('.toggle-btn');
+      if (chart && btns.length) {
+        btns.forEach(btn => {
+          btn.addEventListener('click', () => {
+            const mode = btn.dataset.mode as 'views' | 'visitors';
+            btns.forEach(b => b.classList.toggle('active', b === btn));
+            chart.querySelectorAll<HTMLElement>('.bar-wrap').forEach(wrap => {
+              const bar = wrap.querySelector<HTMLElement>('.bar')!;
+              bar.style.height = (mode === 'visitors' ? wrap.dataset.uh : wrap.dataset.vh) + '%';
+              const count = mode === 'visitors' ? wrap.dataset.uc : wrap.dataset.vc;
+              wrap.title = `${Number(count).toLocaleString()} ${mode} · ${wrap.dataset.date}`;
+            });
+          });
+        });
+      }
+    </script>
   </body>
 </html>
 
@@ -197,13 +317,8 @@ function fmtNum(n: number) {
     margin: 0 0 0.5rem;
   }
 
-  a.refresh {
-    color: var(--color-accent);
-    text-decoration: none;
-  }
-  a.refresh:hover {
-    text-decoration: underline;
-  }
+  a.refresh { color: var(--color-accent); text-decoration: none; }
+  a.refresh:hover { text-decoration: underline; }
 
   /* ── Stats grid ── */
   .stats-grid {
@@ -213,9 +328,7 @@ function fmtNum(n: number) {
   }
 
   @media (min-width: 600px) {
-    .stats-grid {
-      grid-template-columns: repeat(4, 1fr);
-    }
+    .stats-grid { grid-template-columns: repeat(4, 1fr); }
   }
 
   /* ── Card ── */
@@ -240,6 +353,15 @@ function fmtNum(n: number) {
     margin-top: 0.375rem;
   }
 
+  .stat-delta {
+    font-size: 0.6875rem;
+    font-weight: 500;
+    margin-top: 0.3rem;
+  }
+
+  .stat-delta.pos { color: #6aaf82; }
+  .stat-delta.neg { color: var(--color-accent); }
+
   /* ── Section title ── */
   .section-title {
     font-size: 0.6875rem;
@@ -250,15 +372,50 @@ function fmtNum(n: number) {
     margin: 0 0 1.25rem;
   }
 
-  /* ── Bar chart ── */
-  .chart-card {
-    padding-bottom: 1rem;
+  /* ── Chart ── */
+  .chart-card { padding-bottom: 1rem; }
+
+  .chart-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1.25rem;
   }
+
+  .chart-header .section-title { margin: 0; }
+
+  .chart-toggle {
+    display: flex;
+    gap: 2px;
+    background: var(--color-border);
+    border-radius: 6px;
+    padding: 2px;
+  }
+
+  .toggle-btn {
+    border: none;
+    background: transparent;
+    color: var(--color-muted);
+    font-family: var(--font-body);
+    font-size: 0.6875rem;
+    font-weight: 500;
+    padding: 0.25rem 0.625rem;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.1s, color 0.1s;
+  }
+
+  .toggle-btn.active {
+    background: var(--color-surface);
+    color: var(--color-text);
+  }
+
+  .toggle-btn:hover:not(.active) { color: var(--color-text); }
 
   .chart {
     display: flex;
     align-items: flex-end;
-    gap: 3px;
+    gap: 2px;
     height: 8rem;
   }
 
@@ -276,18 +433,16 @@ function fmtNum(n: number) {
     width: 100%;
     background: var(--color-accent);
     border-radius: 2px 2px 0 0;
-    opacity: 0.75;
-    transition: opacity 0.1s;
+    opacity: 0.7;
+    transition: opacity 0.1s, height 0.2s ease;
     min-height: 0;
   }
 
-  .bar-wrap:hover .bar {
-    opacity: 1;
-  }
+  .bar-wrap:hover .bar { opacity: 1; }
 
   .bar-label {
     display: block;
-    font-size: 0.5625rem;
+    font-size: 0.5rem;
     color: var(--color-muted);
     margin-top: 0.375rem;
     white-space: nowrap;
@@ -296,14 +451,27 @@ function fmtNum(n: number) {
     max-width: 100%;
   }
 
-  /* ── Top pages table ── */
-  .pages-table {
+  /* ── Bottom grid: pages + sources ── */
+  .bottom-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+  }
+
+  .bottom-grid.single { grid-template-columns: 1fr; }
+
+  @media (max-width: 600px) {
+    .bottom-grid { grid-template-columns: 1fr; }
+  }
+
+  /* ── Data table ── */
+  .data-table {
     width: 100%;
     border-collapse: collapse;
     font-size: 0.875rem;
   }
 
-  .pages-table th {
+  .data-table th {
     text-align: left;
     font-weight: 500;
     color: var(--color-muted);
@@ -314,27 +482,64 @@ function fmtNum(n: number) {
     border-bottom: 1px solid var(--color-border);
   }
 
-  .pages-table th:last-child,
-  .pages-table td:last-child {
-    text-align: right;
-  }
+  .data-table th:last-child,
+  .data-table td:last-child { text-align: right; }
 
-  .pages-table td {
+  .data-table td {
     padding: 0.625rem 0;
     border-bottom: 1px solid var(--color-border);
   }
 
-  .pages-table tr:last-child td {
-    border-bottom: none;
-  }
+  .data-table tr:last-child td { border-bottom: none; }
 
-  .path {
+  .mono {
     font-family: ui-monospace, 'Menlo', monospace;
     font-size: 0.8125rem;
   }
 
-  .count {
+  .num {
+    color: var(--color-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .muted { color: var(--color-muted); }
+
+  /* ── Countries ── */
+  .countries {
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+  }
+
+  .country-row {
+    display: grid;
+    grid-template-columns: 1.5rem 2.5rem 1fr 2.5rem;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.8125rem;
+  }
+
+  .country-flag { font-size: 1rem; line-height: 1; }
+  .country-code { color: var(--color-muted); font-size: 0.75rem; }
+
+  .country-bar-wrap {
+    height: 4px;
+    background: var(--color-border);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .country-bar {
+    height: 100%;
+    background: var(--color-accent);
+    border-radius: 2px;
+    opacity: 0.7;
+  }
+
+  .country-count {
+    text-align: right;
     color: var(--color-muted);
     font-variant-numeric: tabular-nums;
   }
 </style>
+

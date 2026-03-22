@@ -21,15 +21,34 @@ export const POST: APIRoute = async ({ request }) => {
   }
 
   let page = '/';
+  let rawReferrer = '';
   try {
-    const body = await request.json() as { page?: unknown };
+    const body = await request.json() as { page?: unknown; referrer?: unknown };
     if (typeof body.page === 'string') {
-      // Normalize to just the pathname, capped at 200 chars
       page = new URL(body.page, 'http://x').pathname.slice(0, 200);
     }
+    if (typeof body.referrer === 'string') {
+      rawReferrer = body.referrer.trim().slice(0, 500);
+    }
   } catch {
-    // Default to '/' if parsing fails
+    // use defaults
   }
+
+  // Normalize referrer to a hostname or "Direct"
+  let referrer = 'Direct';
+  if (rawReferrer) {
+    try {
+      const ref = new URL(rawReferrer);
+      if (!ref.hostname.endsWith('jonosmond.com')) {
+        referrer = ref.hostname.replace(/^www\./, '');
+      }
+    } catch {
+      // ignore invalid URLs
+    }
+  }
+
+  // Country from Vercel edge header (ISO 3166-1 alpha-2 or "XX")
+  const country = request.headers.get('x-vercel-ip-country') ?? 'XX';
 
   const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
 
@@ -47,10 +66,12 @@ export const POST: APIRoute = async ({ request }) => {
     body: JSON.stringify([
       ['INCR', 'pv:total'],
       ['INCR', `pv:day:${today}`],
-      ['ZINCRBY', 'pages', '1', page],
+      ['ZINCRBY', 'pages', 1, page],
+      ['ZINCRBY', 'referrers', 1, referrer],
+      ['ZINCRBY', 'countries', 1, country],
       ['SADD', `visitors:day:${today}`, visitorHash],
-      ['EXPIRE', `pv:day:${today}`, 7_776_000],       // 90 days TTL
-      ['EXPIRE', `visitors:day:${today}`, 7_776_000], // 90 days TTL
+      ['EXPIRE', `pv:day:${today}`, 7_776_000],
+      ['EXPIRE', `visitors:day:${today}`, 7_776_000],
     ]),
   });
 
