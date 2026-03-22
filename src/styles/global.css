@@ -14,6 +14,27 @@
   --color-accent: #c46b4b;
 }
 
+:root {
+  --color-border: rgba(245, 244, 240, 0.08);
+  --color-border-highlight: rgba(245, 244, 240, 0.15);
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --color-bg: #f5f0e8;
+    --color-surface: #ede8df;
+    --color-text: #1a1714;
+    --color-muted: #6b6762;
+    --color-accent: #a04525;
+    --color-border: rgba(26, 23, 20, 0.1);
+    --color-border-highlight: rgba(26, 23, 20, 0.18);
+  }
+
+  html {
+    color-scheme: light;
+  }
+}
+
 *,
 *::before,
 *::after {
@@ -21,6 +42,7 @@
 }
 
 html {
+  color-scheme: dark;
   background-color: var(--color-bg);
   color: var(--color-text);
   font-family: var(--font-body);
