@@ -54,6 +54,9 @@ const results = await redisPipeline([
   ['ZREVRANGE', 'timezones',    0, 9, 'WITHSCORES'],
   ['ZREVRANGE', 'colorSchemes', 0, 4, 'WITHSCORES'],
   ['ZREVRANGE', 'viewports',    0, 4, 'WITHSCORES'],
+  // Engagement events
+  ['ZREVRANGE', 'scroll_depth',    0, -1, 'WITHSCORES'],
+  ['ZREVRANGE', 'outbound_clicks', 0,  9, 'WITHSCORES'],
 ]);
 
 // ─── Parse ────────────────────────────────────────────────────────────────────
@@ -87,7 +90,16 @@ const topOS         = parseZSet(results[2 * N + 6]);
 const topDevices    = parseZSet(results[2 * N + 7]);
 const topTimezones  = parseZSet(results[2 * N + 8]);
 const colorSchemes  = parseZSet(results[2 * N + 9]);
-const topViewports  = parseZSet(results[2 * N + 10]);
+const topViewports     = parseZSet(results[2 * N + 10]);
+const rawScrollDepth   = parseZSet(results[2 * N + 11]);
+const topClicks        = parseZSet(results[2 * N + 12]);
+
+// Build scroll funnel — sort by milestone number, compute drop-off %
+const scrollFunnel = [25, 50, 75, 100].map(pct => {
+  const entry = rawScrollDepth.find(e => Number(e.name) === pct);
+  return { pct, count: entry?.count ?? 0 };
+});
+const totalPageviews = totalViews || 1; // avoid /0
 
 // ─── Computed stats ───────────────────────────────────────────────────────────
 const todayViews        = dailyViews[N - 1]!.views;
@@ -398,6 +410,49 @@ function flag(code: string): string {
                     <tr>
                       <td>{v.name}</td>
                       <td class="num">{fmtNum(v.count)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+
+      <!-- Scroll depth + Outbound clicks -->
+      {(scrollFunnel.some(r => r.count > 0) || topClicks.length > 0) && (
+        <div class="two-col">
+          {scrollFunnel.some(r => r.count > 0) && (
+            <div class="card">
+              <h2 class="section-title">Scroll depth</h2>
+              <div class="scroll-funnel">
+                {scrollFunnel.map(row => (
+                  <div class="scroll-row">
+                    <span class="scroll-label">{row.pct}%</span>
+                    <div class="country-bar-wrap" style="flex:1">
+                      <div
+                        class="country-bar"
+                        style={`width:${((row.count / Math.max(...scrollFunnel.map(r => r.count), 1)) * 100).toFixed(1)}%`}
+                      ></div>
+                    </div>
+                    <span class="scroll-pct">{row.count > 0 ? Math.round((row.count / totalPageviews) * 100) : 0}% of views</span>
+                    <span class="country-count">{fmtNum(row.count)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {topClicks.length > 0 && (
+            <div class="card">
+              <h2 class="section-title">Outbound clicks</h2>
+              <table class="data-table">
+                <thead><tr><th>Destination</th><th>Clicks</th></tr></thead>
+                <tbody>
+                  {topClicks.map(c => (
+                    <tr>
+                      <td>{c.name}</td>
+                      <td class="num">{fmtNum(c.count)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -762,6 +817,34 @@ function flag(code: string): string {
   .country-count {
     text-align: right;
     color: var(--color-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ── Scroll funnel ── */
+  .scroll-funnel {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .scroll-row {
+    display: grid;
+    grid-template-columns: 2rem 1fr 5.5rem 2.5rem;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.8125rem;
+  }
+
+  .scroll-label {
+    font-variant-numeric: tabular-nums;
+    color: var(--color-muted);
+    font-size: 0.75rem;
+  }
+
+  .scroll-pct {
+    color: var(--color-muted);
+    font-size: 0.75rem;
+    text-align: right;
     font-variant-numeric: tabular-nums;
   }
 </style>

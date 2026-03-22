@@ -11,6 +11,10 @@ async function hashIp(ip: string, salt: string): Promise<string> {
     .slice(0, 16);
 }
 
+function isBot(ua: string): boolean {
+  return /bot|crawl|slurp|spider|facebookexternalhit|whatsapp|telegram|wget|curl|python|java\/|go-http|axios|node-fetch|vercel|lighthouse|pagespeed|chrome-lighthouse|headless|phantom|selenium|puppeteer|playwright|prerender|scanner|checker|monitor|ping|health/i.test(ua);
+}
+
 function parseUA(ua: string): { browser: string; os: string; device: string } {
   // Device — mobile check before tablet
   let device = 'Desktop';
@@ -43,6 +47,10 @@ export const POST: APIRoute = async ({ request }) => {
   if (!restUrl || !restToken) {
     return new Response(null, { status: 204 });
   }
+
+  // UA parsing + bot filtering — do this before any Redis writes
+  const ua = request.headers.get('user-agent') ?? '';
+  if (isBot(ua)) return new Response(null, { status: 204 });
 
   let page = '/';
   let rawReferrer = '';
@@ -79,8 +87,7 @@ export const POST: APIRoute = async ({ request }) => {
   const timezone = request.headers.get('x-vercel-ip-timezone')  ?? 'Unknown';
   const city     = rawCity ? decodeURIComponent(rawCity).slice(0, 100) : 'Unknown';
 
-  // UA parsing
-  const ua = request.headers.get('user-agent') ?? '';
+  // UA parsing (ua already fetched above for bot check)
   const { browser, os, device } = parseUA(ua);
 
   const today = new Date().toISOString().slice(0, 10);
