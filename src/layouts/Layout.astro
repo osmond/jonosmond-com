@@ -40,5 +40,21 @@ const ogImage = new URL('/og.svg', Astro.site ?? 'https://jonosmond.com');
   </head>
   <body>
     <slot />
+    <script>
+      // Don't self-track the analytics dashboard
+      if (!window.location.pathname.startsWith('/analytics')) {
+        const payload = JSON.stringify({ page: window.location.pathname });
+        if (typeof navigator.sendBeacon === 'function') {
+          navigator.sendBeacon('/api/track', new Blob([payload], { type: 'application/json' }));
+        } else {
+          fetch('/api/track', {
+            method: 'POST',
+            body: payload,
+            headers: { 'Content-Type': 'application/json' },
+            keepalive: true,
+          }).catch(() => {});
+        }
+      }
+    </script>
   </body>
 </html>
