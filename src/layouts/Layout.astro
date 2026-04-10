@@ -57,11 +57,32 @@ const ogImage = new URL('/og.svg', Astro.site ?? 'https://jonosmond.com');
       if (!isAnalytics && !isOptedOut) {
         const page = window.location.pathname;
         const w = window.innerWidth;
+
+        // new vs. returning: use localStorage to distinguish first-ever visit
+        const HAS_VISITED_KEY = 'analytics_visited';
+        const isNew = !localStorage.getItem(HAS_VISITED_KEY);
+        localStorage.setItem(HAS_VISITED_KEY, '1');
+
+        // Entry page: no referrer, or referrer is external
+        const isEntry = !document.referrer || !document.referrer.includes('jonosmond.com');
+
+        // UTM parameters
+        const sp = new URLSearchParams(location.search);
+        const utmSource   = sp.get('utm_source')   ?? '';
+        const utmMedium   = sp.get('utm_medium')   ?? '';
+        const utmCampaign = sp.get('utm_campaign') ?? '';
+
         const payload = JSON.stringify({
           page,
           referrer: document.referrer,
           colorScheme: window.matchMedia('(prefers-color-scheme: dark)').matches ? 'Dark' : 'Light',
           viewport: w < 768 ? 'Mobile' : w < 1024 ? 'Tablet' : 'Desktop',
+          isNew,
+          isEntry,
+          language: navigator.language ?? '',
+          utmSource,
+          utmMedium,
+          utmCampaign,
         });
         if (typeof navigator.sendBeacon === 'function') {
           navigator.sendBeacon('/api/track', new Blob([payload], { type: 'application/json' }));
@@ -74,13 +95,32 @@ const ogImage = new URL('/og.svg', Astro.site ?? 'https://jonosmond.com');
           }).catch(() => {});
         }
 
+        // ── Time on page ───────────────────────────────────────────────────
+        const pageStartTime = Date.now();
+        let durationSent = false;
+        function sendDuration() {
+          if (durationSent) return;
+          durationSent = true;
+          const secs = Math.round((Date.now() - pageStartTime) / 1000);
+          if (secs < 1) return;
+          sendEvent({ type: 'duration', value: String(secs), page });
+        }
+        // ── Exit page tracking ─────────────────────────────────────────────
+        let exitSent = false;
+        function sendExit() {
+          if (exitSent) return;
+          exitSent = true;
+          sendEvent({ type: 'exit', page });
+        }
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'hidden') { sendDuration(); sendExit(); }
+        });
+        window.addEventListener('pagehide', () => { sendDuration(); sendExit(); });
+
         // ── Scroll depth tracking ──────────────────────────────────────────
         // Fire once per milestone (25 / 50 / 75 / 100) per page view
         const milestones = [25, 50, 75, 100];
         const reached = new Set<number>();
-        // Create invisible sentinel divs at each milestone height
-        // We use a scroll listener rather than IntersectionObserver so it
-        // works even on short pages (100% fires immediately when doc fits viewport)
         function checkScroll() {
           const scrolled = window.scrollY + window.innerHeight;
           const total    = document.documentElement.scrollHeight;
@@ -108,6 +148,32 @@ const ogImage = new URL('/og.svg', Astro.site ?? 'https://jonosmond.com');
             }
           } catch { /* ignore malformed hrefs */ }
         });
+      }
+    </script>
+    <script>
+      // ── Core Web Vitals ────────────────────────────────────────────────────
+      import { onLCP, onCLS, onINP } from 'web-vitals';
+      const _isAnalytics = window.location.pathname.startsWith('/analytics');
+      const _isOptedOut  = localStorage.getItem('analytics_opt_out') === '1';
+      if (!_isAnalytics && !_isOptedOut) {
+        function rateMetric(name: string, value: number): string {
+          if (name === 'LCP') return value <= 2500 ? 'good' : value <= 4000 ? 'needs-improvement' : 'poor';
+          if (name === 'CLS') return value <= 0.1  ? 'good' : value <= 0.25  ? 'needs-improvement' : 'poor';
+          if (name === 'INP') return value <= 200  ? 'good' : value <= 500   ? 'needs-improvement' : 'poor';
+          return 'poor';
+        }
+        function reportVital(m: { name: string; value: number }) {
+          const body = JSON.stringify({
+            type: 'vitals',
+            metric: m.name,
+            rating: rateMetric(m.name, m.value),
+            page: window.location.pathname,
+          });
+          navigator.sendBeacon?.('/api/event', new Blob([body], { type: 'application/json' }));
+        }
+        onLCP(reportVital);
+        onCLS(reportVital);
+        onINP(reportVital);
       }
     </script>
   </body>

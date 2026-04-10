@@ -26,7 +26,7 @@ async function redisPipeline(commands: (string | number)[][]): Promise<unknown[]
 }
 
 // ─── 30-day range ─────────────────────────────────────────────────────────────
-const N = 30;
+const N = 90;
 const days = Array.from({ length: N }, (_, i) => {
   const d = new Date();
   d.setUTCDate(d.getUTCDate() - (N - 1 - i));
@@ -40,6 +40,13 @@ const days = Array.from({ length: N }, (_, i) => {
 // [2N+1] pages  [2N+2] referrers  [2N+3] countries  [2N+4] cities
 // [2N+5] browsers  [2N+6] os  [2N+7] devices  [2N+8] timezones
 // [2N+9] colorSchemes  [2N+10] viewports
+// [2N+11] scroll_depth  [2N+12] outbound_clicks
+// [2N+13] visitor_type  [2N+14] time_on_page  [2N+15] time_total_secs  [2N+16] time_total_sessions
+// [2N+17] pv:hourly  [2N+18] languages  [2N+19] entry_pages
+// [2N+20] utm_source  [2N+21] utm_medium  [2N+22] utm_campaign
+// [2N+23] recent_events
+// [2N+24] sessions_total  [2N+25] sessions_engaged
+// [2N+26] exit_pages  [2N+27] cwv:LCP  [2N+28] cwv:CLS  [2N+29] cwv:INP
 const results = await redisPipeline([
   ['GET', 'pv:total'],
   ...days.map(d => ['GET',   `pv:day:${d}`]),
@@ -54,9 +61,25 @@ const results = await redisPipeline([
   ['ZREVRANGE', 'timezones',    0, 9, 'WITHSCORES'],
   ['ZREVRANGE', 'colorSchemes', 0, 4, 'WITHSCORES'],
   ['ZREVRANGE', 'viewports',    0, 4, 'WITHSCORES'],
-  // Engagement events
   ['ZREVRANGE', 'scroll_depth',    0, -1, 'WITHSCORES'],
   ['ZREVRANGE', 'outbound_clicks', 0,  9, 'WITHSCORES'],
+  ['ZREVRANGE', 'visitor_type',  0, -1, 'WITHSCORES'],
+  ['ZREVRANGE', 'time_on_page',  0, -1, 'WITHSCORES'],
+  ['GET', 'time_total_secs'],
+  ['GET', 'time_total_sessions'],
+  ['HGETALL', 'pv:hourly'],
+  ['ZREVRANGE', 'languages',    0, 9, 'WITHSCORES'],
+  ['ZREVRANGE', 'entry_pages',  0, 9, 'WITHSCORES'],
+  ['ZREVRANGE', 'utm_source',   0, 9, 'WITHSCORES'],
+  ['ZREVRANGE', 'utm_medium',   0, 9, 'WITHSCORES'],
+  ['ZREVRANGE', 'utm_campaign', 0, 9, 'WITHSCORES'],
+  ['LRANGE',   'recent_events', 0, 19],
+  ['GET',      'sessions_total'],
+  ['GET',      'sessions_engaged'],
+  ['ZREVRANGE','exit_pages',    0, 9, 'WITHSCORES'],
+  ['HGETALL',  'cwv:LCP'],
+  ['HGETALL',  'cwv:CLS'],
+  ['HGETALL',  'cwv:INP'],
 ]);
 
 // ─── Parse ────────────────────────────────────────────────────────────────────
@@ -93,6 +116,77 @@ const colorSchemes  = parseZSet(results[2 * N + 9]);
 const topViewports     = parseZSet(results[2 * N + 10]);
 const rawScrollDepth   = parseZSet(results[2 * N + 11]);
 const topClicks        = parseZSet(results[2 * N + 12]);
+const visitorTypes     = parseZSet(results[2 * N + 13]);
+const timeOnPageBkts   = parseZSet(results[2 * N + 14]);
+const totalTimeSecs    = Number(results[2 * N + 15] ?? 0);
+const totalTimeSessions= Number(results[2 * N + 16] ?? 0);
+const topLanguages     = parseZSet(results[2 * N + 18]);
+const topEntryPages    = parseZSet(results[2 * N + 19]);
+const topUtmSource     = parseZSet(results[2 * N + 20]);
+const topUtmMedium     = parseZSet(results[2 * N + 21]);
+const topUtmCampaign   = parseZSet(results[2 * N + 22]);
+
+// Recent events feed
+const rawRecent = (results[2 * N + 23] ?? []) as string[];
+interface RecentEvent { ts: string; page: string; country: string; referrer: string; device: string; }
+const recentEvents: RecentEvent[] = rawRecent.map(s => {
+  try { return JSON.parse(s) as RecentEvent; } catch { return null; }
+}).filter((e): e is RecentEvent => e !== null);
+
+// Sessions & bounce rate
+const sessionTotal   = Number(results[2 * N + 24] ?? 0);
+const sessionEngaged = Number(results[2 * N + 25] ?? 0);
+const bounceRatePct  = sessionTotal > 10
+  ? Math.max(0, Math.min(100, Math.round((1 - Math.min(sessionEngaged, sessionTotal) / sessionTotal) * 100)))
+  : null;
+
+// Exit pages
+const topExitPages = parseZSet(results[2 * N + 26]);
+
+// Core Web Vitals
+function parseCwv(raw: unknown) {
+  const arr = (raw ?? []) as string[];
+  const d: Record<string, number> = {};
+  for (let i = 0; i < arr.length; i += 2) d[arr[i]!] = Number(arr[i + 1]);
+  const good = d['good'] ?? 0;
+  const ni   = d['needs-improvement'] ?? 0;
+  const poor = d['poor'] ?? 0;
+  return { good, ni, poor, total: good + ni + poor };
+}
+const cwvLCP = parseCwv(results[2 * N + 27]);
+const cwvCLS = parseCwv(results[2 * N + 28]);
+const cwvINP = parseCwv(results[2 * N + 29]);
+
+// Active now (visits within last 5 min)
+const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+const activeNow  = recentEvents.filter(e => e.ts >= fiveMinAgo).length;
+
+// Hourly heatmap — Redis HGETALL returns flat [field, val, field, val, ...]
+const rawHourly = (results[2 * N + 17] ?? []) as string[];
+const hourlyViews = Array.from({ length: 24 }, (_, h) => {
+  const idx = rawHourly.indexOf(String(h));
+  return { hour: h, views: idx !== -1 ? Number(rawHourly[idx + 1]) : 0 };
+});
+
+// Average time on page (seconds)
+const avgTimeSecs = totalTimeSessions > 0 ? Math.round(totalTimeSecs / totalTimeSessions) : 0;
+function fmtDuration(secs: number) {
+  if (secs < 60) return `${secs}s`;
+  return `${Math.floor(secs / 60)}m ${secs % 60}s`;
+}
+
+// ─── Milestone progress ───────────────────────────────────────────────────────
+const MILESTONES = [100, 250, 500, 1_000, 2_500, 5_000, 10_000, 25_000, 50_000, 100_000];
+const nextMilestone = MILESTONES.find(m => m > totalViews) ?? null;
+const prevMilestone = nextMilestone
+  ? (MILESTONES[MILESTONES.indexOf(nextMilestone) - 1] ?? 0)
+  : null;
+const milestoneProgress = (nextMilestone && prevMilestone !== null)
+  ? Math.min(((totalViews - prevMilestone) / (nextMilestone - prevMilestone)) * 100, 100)
+  : 100;
+
+// Peak hour (UTC)
+const peakHour = hourlyViews.reduce((best, h) => h.views > best.views ? h : best, hourlyViews[0]!);
 
 // Build scroll funnel — sort by milestone number, compute drop-off %
 const scrollFunnel = [25, 50, 75, 100].map(pct => {
@@ -108,6 +202,30 @@ const todayVisitors     = dailyVisitors[N - 1]!.visitors;
 const yesterdayVisitors = dailyVisitors[N - 2]!.visitors;
 const sevenDayViews     = dailyViews.slice(N - 7).reduce((s, d) => s + d.views, 0);
 const lastWeekViews     = dailyViews.slice(N - 14, N - 7).reduce((s, d) => s + d.views, 0);
+const thirtyDayViews    = dailyViews.slice(N - 30).reduce((s, d) => s + d.views, 0);
+const thirtyDayVisitors = dailyVisitors.slice(N - 30).reduce((s, d) => s + d.visitors, 0);
+const sevenDayVisitors  = dailyVisitors.slice(N - 7).reduce((s, d) => s + d.visitors, 0);
+const ninetyDayViews    = dailyViews.reduce((s, d) => s + d.views, 0);
+const ninetyDayVisitors = dailyVisitors.reduce((s, d) => s + d.visitors, 0);
+const dailyAvg          = Math.round(thirtyDayViews / 30);
+
+// Peak day in the 30-day window
+const peakDay = dailyViews.reduce((best, d) => d.views > best.views ? d : best, dailyViews[0]!);
+
+// Day-of-week aggregation (0=Sun…6=Sat)
+const DOW_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const dowTotals  = Array(7).fill(0) as number[];
+const dowCounts  = Array(7).fill(0) as number[];
+dailyViews.forEach(({ date, views }) => {
+  const dow = new Date(date + 'T00:00:00Z').getUTCDay();
+  dowTotals[dow] += views;
+  dowCounts[dow] += 1;
+});
+const dowAvg = dowTotals.map((total, i) => ({
+  label: DOW_LABELS[i]!,
+  avg: dowCounts[i]! > 0 ? Math.round(total / dowCounts[i]!) : 0,
+}));
+const maxDowAvg = Math.max(...dowAvg.map(d => d.avg), 1);
 
 // ─── Week-over-week deltas ────────────────────────────────────────────────────
 type Delta = { pct: number; positive: boolean } | null;
@@ -122,9 +240,24 @@ const delta7Day    = calcDelta(sevenDayViews, lastWeekViews);
 const deltaToday   = calcDelta(todayViews, yesterdayViews);
 const deltaVisitor = calcDelta(todayVisitors, yesterdayVisitors);
 
+// Views-per-visitor ratio for today and 30-day
+const todayVpv      = todayVisitors > 0 ? (todayViews / todayVisitors).toFixed(1) : null;
+const thirtyDayVpv  = thirtyDayVisitors > 0 ? (thirtyDayViews / thirtyDayVisitors).toFixed(1) : null;
+
+// Scroll retention — % of 25% readers who reached each deeper milestone
+const scroll25 = scrollFunnel[0]!.count || 1;
+
 // ─── Chart helpers ────────────────────────────────────────────────────────────
-const maxViews    = Math.max(...dailyViews.map(d => d.views), 1);
-const maxVisitors = Math.max(...dailyVisitors.map(d => d.visitors), 1);
+const max7   = Math.max(...dailyViews.slice(N - 7).map(d => d.views), 1);
+const max30  = Math.max(...dailyViews.slice(N - 30).map(d => d.views), 1);
+const max90  = Math.max(...dailyViews.map(d => d.views), 1);
+const maxV7  = Math.max(...dailyVisitors.slice(N - 7).map(d => d.visitors), 1);
+const maxV30 = Math.max(...dailyVisitors.slice(N - 30).map(d => d.visitors), 1);
+const maxV90 = Math.max(...dailyVisitors.map(d => d.visitors), 1);
+const maxViews    = max30;  // default display is 30d
+const maxVisitors = maxV30;
+const maxHourly   = Math.max(...hourlyViews.map(h => h.views), 1);
+const todayDate   = days[N - 1];
 
 function barH(val: number, max: number) {
   return val > 0 ? Math.max((val / max) * 100, 3).toFixed(1) : '0';
@@ -144,6 +277,16 @@ function flag(code: string): string {
     0x1F1E6 + code.toUpperCase().charCodeAt(1) - 65,
   );
 }
+
+// ─── Per-page scroll depth (second pipeline, after topPages is known) ─────────
+const scrollPages = topPages.slice(0, 5).map(p => p.name);
+const scrollPageResults = scrollPages.length > 0
+  ? await redisPipeline(scrollPages.map(p => ['ZREVRANGE', `page_scroll:${p.slice(0, 150)}`, 0, -1, 'WITHSCORES']))
+  : [];
+const perPageScroll = scrollPages.map((pg, i) => ({
+  page: pg,
+  depth: parseZSet(scrollPageResults[i]),
+})).filter(p => p.depth.some(d => d.count > 0));
 ---
 
 <!doctype html>
@@ -162,6 +305,7 @@ function flag(code: string): string {
         <div class="header-row">
           <h1>Analytics</h1>
           <div class="header-actions">
+            <button id="export-btn" class="export-btn">Export CSV</button>
             <button id="opt-out-btn" class="opt-btn"></button>
             <a href="/analytics" class="refresh" onclick="event.preventDefault();location.reload()">Refresh</a>
           </div>
@@ -179,7 +323,7 @@ function flag(code: string): string {
           <div class="stat-label">Last 7 days</div>
           {delta7Day && (
             <div class={`stat-delta ${delta7Day.positive ? 'pos' : 'neg'}`}>
-              {delta7Day.positive ? '+' : ''}{delta7Day.pct}% vs prev week
+              {delta7Day.positive ? '▲' : '▼'} {Math.abs(delta7Day.pct)}% vs prev week
             </div>
           )}
         </div>
@@ -188,44 +332,119 @@ function flag(code: string): string {
           <div class="stat-label">Today's views</div>
           {deltaToday && (
             <div class={`stat-delta ${deltaToday.positive ? 'pos' : 'neg'}`}>
-              {deltaToday.positive ? '+' : ''}{deltaToday.pct}% vs yesterday
+              {deltaToday.positive ? '▲' : '▼'} {Math.abs(deltaToday.pct)}% vs yesterday
             </div>
           )}
+          {todayVpv && <div class="stat-sub">{todayVpv} views/visitor</div>}
         </div>
         <div class="card">
           <div class="stat-value">{fmtNum(todayVisitors)}</div>
           <div class="stat-label">Today's visitors</div>
           {deltaVisitor && (
             <div class={`stat-delta ${deltaVisitor.positive ? 'pos' : 'neg'}`}>
-              {deltaVisitor.positive ? '+' : ''}{deltaVisitor.pct}% vs yesterday
+              {deltaVisitor.positive ? '▲' : '▼'} {Math.abs(deltaVisitor.pct)}% vs yesterday
             </div>
           )}
         </div>
+        {avgTimeSecs > 0 && (
+          <div class="card">
+            <div class="stat-value">{fmtDuration(avgTimeSecs)}</div>
+            <div class="stat-label">Avg. time on page</div>
+            <div class="stat-sub">{fmtNum(totalTimeSessions)} sessions tracked</div>
+          </div>
+        )}
+        <div class="card">
+          <div class="stat-value">{fmtNum(thirtyDayViews)}</div>
+          <div class="stat-label">30-day views</div>
+          {thirtyDayVpv && <div class="stat-sub">{thirtyDayVpv} views/visitor</div>}
+        </div>
+        <div class="card">
+          <div class="stat-value">{fmtNum(dailyAvg)}</div>
+          <div class="stat-label">Daily avg (30d)</div>
+          {peakDay.views > 0 && (
+            <div class="stat-sub">Peak {fmtNum(peakDay.views)} on {fmtDate(peakDay.date)}</div>
+          )}
+        </div>
+        <div class="card">
+          <div class="stat-value">{fmtNum(thirtyDayVisitors)}</div>
+          <div class="stat-label">~30-day visitors</div>
+          <div class="stat-sub">Est. (may overlap)</div>
+        </div>
+        {nextMilestone !== null && (
+          <div class="card milestone-card">
+            <div class="milestone-label">Next milestone</div>
+            <div class="milestone-target">{fmtNum(nextMilestone)}</div>
+            <div class="milestone-bar-bg">
+              <div class="milestone-bar-fill" style={`width:${milestoneProgress.toFixed(1)}%`}></div>
+            </div>
+            <div class="milestone-sub">{fmtNum(nextMilestone - totalViews)} views to go</div>
+          </div>
+        )}
+        {activeNow > 0 && (
+          <div class="card">
+            <div class="stat-value active-count">{activeNow}</div>
+            <div class="stat-label">Active now</div>
+            <div class="stat-sub">Visitors in last 5 min</div>
+          </div>
+        )}
+        {bounceRatePct !== null && (
+          <div class="card">
+            <div class="stat-value">{bounceRatePct}%</div>
+            <div class="stat-label">~Bounce rate</div>
+            <div class="stat-sub">Est. single-page sessions</div>
+          </div>
+        )}
       </div>
 
-      <!-- 30-day chart with views / visitors toggle -->
+      <!-- Chart with views / visitors toggle + date range toggle -->
       <div class="card chart-card">
         <div class="chart-header">
-          <h2 class="section-title">Last 30 days</h2>
-          <div class="chart-toggle" role="group" aria-label="Chart metric">
-            <button class="toggle-btn active" data-mode="views">Views</button>
-            <button class="toggle-btn" data-mode="visitors">Visitors</button>
+          <h2 class="section-title" id="chart-title">Last 30 days</h2>
+          <div class="chart-controls">
+            <div class="range-control" role="group" aria-label="Date range">
+              <button class="range-btn" data-range="7">7d</button>
+              <button class="range-btn active" data-range="30">30d</button>
+              <button class="range-btn" data-range="90">90d</button>
+            </div>
+            <div class="chart-toggle" role="group" aria-label="Chart metric">
+              <button class="toggle-btn active" data-mode="views">Views</button>
+              <button class="toggle-btn" data-mode="visitors">Visitors</button>
+            </div>
           </div>
         </div>
-        <div class="chart" id="chart">
+        <div class="chart" id="chart"
+          data-avg-vh={barH(dailyAvg, max30)}
+          data-avg-uh={barH(Math.round(thirtyDayVisitors / 30), maxV30)}
+          data-avg7-vh={barH(Math.round(sevenDayViews / 7), max7)}
+          data-avg7-uh={barH(Math.round(sevenDayVisitors / 7), maxV7)}
+          data-avg90-vh={barH(Math.round(ninetyDayViews / 90), max90)}
+          data-avg90-uh={barH(Math.round(ninetyDayVisitors / 90), maxV90)}>
+          <div class="avg-line" id="avg-line" style={`bottom:${barH(dailyAvg, max30)}%`} title={`30-day avg: ${fmtNum(dailyAvg)} views/day`}></div>
           {dailyViews.map((day, i) => {
-            const vh = barH(day.views, maxViews);
-            const uh = barH(dailyVisitors[i]!.visitors, maxVisitors);
-            const showLabel = i % 5 === 0 || i === N - 1;
+            const in7  = i >= N - 7;
+            const in30 = i >= N - 30;
+            const vh30 = in30 ? barH(day.views, max30) : '0';
+            const uh30 = in30 ? barH(dailyVisitors[i]!.visitors, maxV30) : '0';
+            const vh7  = in7  ? barH(day.views, max7)  : '0';
+            const uh7  = in7  ? barH(dailyVisitors[i]!.visitors, maxV7)  : '0';
+            const vh90 = barH(day.views, max90);
+            const uh90 = barH(dailyVisitors[i]!.visitors, maxV90);
+            // Default display: 30-day
+            const showLabel = (in30 && (N - 30 - i) % 5 === 0) || i === N - 1;
+            const isToday = day.date === todayDate;
             return (
               <div class="bar-wrap"
-                data-vh={vh}
-                data-uh={uh}
+                data-vh={vh30}   data-uh={uh30}
+                data-vh7={vh7}   data-uh7={uh7}
+                data-vh90={vh90} data-uh90={uh90}
                 data-vc={day.views}
                 data-uc={dailyVisitors[i]!.visitors}
                 data-date={day.date}
+                data-in7={in7 ? '' : undefined}
+                data-in30={in30 ? '' : undefined}
+                style={!in30 ? 'display:none' : undefined}
                 title={`${fmtNum(day.views)} views · ${day.date}`}>
-                <div class="bar" style={`height:${vh}%`}></div>
+                <div class={`bar${isToday ? ' bar-today' : ''}`} style={`height:${vh30}%`}></div>
                 <span class="bar-label">{showLabel ? fmtDate(day.date) : ''}</span>
               </div>
             );
@@ -238,33 +457,33 @@ function flag(code: string): string {
         {topPages.length > 0 && (
           <div class="card">
             <h2 class="section-title">Top pages</h2>
-            <table class="data-table">
-              <thead><tr><th>Page</th><th>Views</th></tr></thead>
-              <tbody>
-                {topPages.map(p => (
-                  <tr>
-                    <td class="mono">{p.name}</td>
-                    <td class="num">{fmtNum(p.count)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div class="bar-table">
+              {topPages.map(p => (
+                <div class="bar-row">
+                  <span class="bar-row-label mono">{p.name}</span>
+                  <div class="country-bar-wrap bar-row-bar">
+                    <div class="country-bar" style={`width:${((p.count / topPages[0]!.count) * 100).toFixed(1)}%`}></div>
+                  </div>
+                  <span class="bar-row-num">{fmtNum(p.count)}</span>
+                </div>
+              ))}
+            </div>
           </div>
         )}
         {topReferrers.length > 0 && (
           <div class="card">
             <h2 class="section-title">Top sources</h2>
-            <table class="data-table">
-              <thead><tr><th>Source</th><th>Views</th></tr></thead>
-              <tbody>
-                {topReferrers.map(r => (
-                  <tr>
-                    <td class={r.name === 'Direct' ? 'muted' : ''}>{r.name}</td>
-                    <td class="num">{fmtNum(r.count)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div class="bar-table">
+              {topReferrers.map(r => (
+                <div class="bar-row">
+                  <span class={`bar-row-label${r.name === 'Direct' ? ' muted' : ''}`}>{r.name}</span>
+                  <div class="country-bar-wrap bar-row-bar">
+                    <div class="country-bar" style={`width:${((r.count / topReferrers[0]!.count) * 100).toFixed(1)}%`}></div>
+                  </div>
+                  <span class="bar-row-num">{fmtNum(r.count)}</span>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -317,49 +536,49 @@ function flag(code: string): string {
           {topDevices.length > 0 && (
             <div class="card">
               <h2 class="section-title">Devices</h2>
-              <table class="data-table">
-                <thead><tr><th>Type</th><th>Views</th></tr></thead>
-                <tbody>
-                  {topDevices.map(d => (
-                    <tr>
-                      <td>{d.name}</td>
-                      <td class="num">{fmtNum(d.count)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div class="bar-table">
+                {topDevices.map(d => (
+                  <div class="bar-row">
+                    <span class="bar-row-label">{d.name}</span>
+                    <div class="country-bar-wrap bar-row-bar">
+                      <div class="country-bar" style={`width:${((d.count / topDevices[0]!.count) * 100).toFixed(1)}%`}></div>
+                    </div>
+                    <span class="bar-row-num">{fmtNum(d.count)}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
           {topBrowsers.length > 0 && (
             <div class="card">
               <h2 class="section-title">Browsers</h2>
-              <table class="data-table">
-                <thead><tr><th>Browser</th><th>Views</th></tr></thead>
-                <tbody>
-                  {topBrowsers.map(b => (
-                    <tr>
-                      <td>{b.name}</td>
-                      <td class="num">{fmtNum(b.count)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div class="bar-table">
+                {topBrowsers.map(b => (
+                  <div class="bar-row">
+                    <span class="bar-row-label">{b.name}</span>
+                    <div class="country-bar-wrap bar-row-bar">
+                      <div class="country-bar" style={`width:${((b.count / topBrowsers[0]!.count) * 100).toFixed(1)}%`}></div>
+                    </div>
+                    <span class="bar-row-num">{fmtNum(b.count)}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
           {topOS.length > 0 && (
             <div class="card">
               <h2 class="section-title">Operating Systems</h2>
-              <table class="data-table">
-                <thead><tr><th>OS</th><th>Views</th></tr></thead>
-                <tbody>
-                  {topOS.map(o => (
-                    <tr>
-                      <td>{o.name}</td>
-                      <td class="num">{fmtNum(o.count)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div class="bar-table">
+                {topOS.map(o => (
+                  <div class="bar-row">
+                    <span class="bar-row-label">{o.name}</span>
+                    <div class="country-bar-wrap bar-row-bar">
+                      <div class="country-bar" style={`width:${((o.count / topOS[0]!.count) * 100).toFixed(1)}%`}></div>
+                    </div>
+                    <span class="bar-row-num">{fmtNum(o.count)}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>
@@ -426,43 +645,374 @@ function flag(code: string): string {
           {scrollFunnel.some(r => r.count > 0) && (
             <div class="card">
               <h2 class="section-title">Scroll depth</h2>
-              <div class="scroll-funnel">
-                {scrollFunnel.map(row => (
-                  <div class="scroll-row">
-                    <span class="scroll-label">{row.pct}%</span>
-                    <div class="country-bar-wrap" style="flex:1">
-                      <div
-                        class="country-bar"
-                        style={`width:${((row.count / Math.max(...scrollFunnel.map(r => r.count), 1)) * 100).toFixed(1)}%`}
-                      ></div>
+              <!-- Visual step funnel -->
+              <div class="scroll-step-funnel">
+                {scrollFunnel.map((row, i) => {
+                  const frac = scrollFunnel[0]!.count > 0 ? row.count / scrollFunnel[0]!.count : 0;
+                  const ofTotal = totalPageviews > 0 ? Math.round((row.count / totalPageviews) * 100) : 0;
+                  const retained = i === 0 ? ofTotal : (scroll25 > 0 ? Math.round((row.count / scroll25) * 100) : 0);
+                  return (
+                    <div class="ssf-col" title={`${fmtNum(row.count)} visits reached ${row.pct}%`}>
+                      <div class="ssf-bar-wrap">
+                        <div class="ssf-bar" style={`height:${Math.round(frac * 100)}%`}></div>
+                      </div>
+                      <div class="ssf-info">
+                        <div class="ssf-milestone">{row.pct}%</div>
+                        <div class="ssf-count">{fmtNum(row.count)}</div>
+                        <div class="ssf-ret">{i === 0 ? `${ofTotal}% of views` : `${retained}% of 25%`}</div>
+                      </div>
                     </div>
-                    <span class="scroll-pct">{row.count > 0 ? Math.round((row.count / totalPageviews) * 100) : 0}% of views</span>
-                    <span class="country-count">{fmtNum(row.count)}</span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
           {topClicks.length > 0 && (
             <div class="card">
               <h2 class="section-title">Outbound clicks</h2>
-              <table class="data-table">
-                <thead><tr><th>Destination</th><th>Clicks</th></tr></thead>
-                <tbody>
-                  {topClicks.map(c => (
-                    <tr>
-                      <td>{c.name}</td>
-                      <td class="num">{fmtNum(c.count)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div class="bar-table">
+                {topClicks.map(c => (
+                  <div class="bar-row">
+                    <span class="bar-row-label">{c.name}</span>
+                    <div class="country-bar-wrap bar-row-bar">
+                      <div class="country-bar" style={`width:${((c.count / topClicks[0]!.count) * 100).toFixed(1)}%`}></div>
+                    </div>
+                    <span class="bar-row-num">{fmtNum(c.count)}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>
       )}
 
+      <!-- New vs. Returning + Time on page -->
+      {(visitorTypes.length > 0 || timeOnPageBkts.length > 0) && (
+        <div class="two-col">
+          {visitorTypes.length > 0 && (
+            <div class="card">
+              <h2 class="section-title">New vs. Returning</h2>
+              <div class="bar-table">
+                {visitorTypes.map(v => (
+                  <div class="bar-row">
+                    <span class="bar-row-label">{v.name}</span>
+                    <div class="country-bar-wrap bar-row-bar">
+                      <div class="country-bar" style={`width:${((v.count / visitorTypes[0]!.count) * 100).toFixed(1)}%`}></div>
+                    </div>
+                    <span class="bar-row-num">{fmtNum(v.count)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {timeOnPageBkts.length > 0 && (() => {
+            const bucketOrder = ['<10s', '10-29s', '30-59s', '1-2m', '2-5m', '5m+'];
+            const sorted = [...timeOnPageBkts].sort((a, b) =>
+              bucketOrder.indexOf(a.name) - bucketOrder.indexOf(b.name)
+            );
+            const maxBkt = Math.max(...sorted.map(b => b.count), 1);
+            return (
+              <div class="card">
+                <h2 class="section-title">Time on page</h2>
+                <div class="bar-table">
+                  {sorted.map(b => (
+                    <div class="bar-row">
+                      <span class="bar-row-label mono">{b.name}</span>
+                      <div class="country-bar-wrap bar-row-bar">
+                        <div class="country-bar" style={`width:${((b.count / maxBkt) * 100).toFixed(1)}%`}></div>
+                      </div>
+                      <span class="bar-row-num">{fmtNum(b.count)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
+      <!-- Hourly heatmap -->
+      {hourlyViews.some(h => h.views > 0) && (
+        <div class="card">
+          <div class="heatmap-header">
+            <h2 class="section-title" style="margin:0">Traffic by hour <span class="utc-note">(UTC · shifts to local in browser)</span></h2>
+            {peakHour.views > 0 && (
+              <span class="peak-hour-badge">Peak: {peakHour.hour}:00 UTC · {fmtNum(peakHour.views)} views</span>
+            )}
+          </div>
+          <div class="hourly-grid" id="hourly-grid">
+            {hourlyViews.map(h => (
+              <div class="hour-cell" data-utc-hour={h.hour} title={`${h.hour}:00 UTC — ${fmtNum(h.views)} views`}>
+                <div
+                  class="hour-bar"
+                  style={`height:${barH(h.views, maxHourly)}%`}
+                ></div>
+                <span class="hour-label">{h.hour % 6 === 0 ? `${h.hour}h` : ''}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <!-- Day-of-week chart -->
+      <div class="card">
+        <h2 class="section-title">Avg. views by day of week (30d)</h2>
+        <div class="dow-grid">
+          {dowAvg.map(d => (
+            <div class="dow-cell" title={`${d.label} — avg ${d.avg} views`}>
+              <div class="dow-bar-wrap">
+                <div class="dow-bar" style={`height:${d.avg > 0 ? Math.max((d.avg / maxDowAvg) * 100, 5).toFixed(1) : 0}%`}></div>
+              </div>
+              <span class="dow-label">{d.label}</span>
+              <span class="dow-count">{d.avg}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <!-- Entry / Exit pages + Languages -->
+      {(topEntryPages.length > 0 || topExitPages.length > 0 || topLanguages.length > 0) && (
+        <div class="three-col">
+          {topEntryPages.length > 0 && (
+            <div class="card">
+              <h2 class="section-title">Entry pages</h2>
+              <div class="bar-table">
+                {topEntryPages.map(p => (
+                  <div class="bar-row">
+                    <span class="bar-row-label mono">{p.name}</span>
+                    <div class="country-bar-wrap bar-row-bar">
+                      <div class="country-bar" style={`width:${((p.count / topEntryPages[0]!.count) * 100).toFixed(1)}%`}></div>
+                    </div>
+                    <span class="bar-row-num">{fmtNum(p.count)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {topExitPages.length > 0 && (
+            <div class="card">
+              <h2 class="section-title">Exit pages</h2>
+              <div class="bar-table">
+                {topExitPages.map(p => (
+                  <div class="bar-row">
+                    <span class="bar-row-label mono">{p.name}</span>
+                    <div class="country-bar-wrap bar-row-bar">
+                      <div class="country-bar" style={`width:${((p.count / topExitPages[0]!.count) * 100).toFixed(1)}%`}></div>
+                    </div>
+                    <span class="bar-row-num">{fmtNum(p.count)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {topLanguages.length > 0 && (
+            <div class="card">
+              <h2 class="section-title">Browser language</h2>
+              <div class="bar-table">
+                {topLanguages.map(l => (
+                  <div class="bar-row">
+                    <span class="bar-row-label">{l.name}</span>
+                    <div class="country-bar-wrap bar-row-bar">
+                      <div class="country-bar" style={`width:${((l.count / topLanguages[0]!.count) * 100).toFixed(1)}%`}></div>
+                    </div>
+                    <span class="bar-row-num">{fmtNum(l.count)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      <!-- UTM attribution -->
+      {(topUtmSource.length > 0 || topUtmMedium.length > 0 || topUtmCampaign.length > 0) && (
+        <div class="three-col">
+          {topUtmSource.length > 0 && (
+            <div class="card">
+              <h2 class="section-title">UTM Source</h2>
+              <div class="bar-table">
+                {topUtmSource.map(u => (
+                  <div class="bar-row">
+                    <span class="bar-row-label">{u.name}</span>
+                    <div class="country-bar-wrap bar-row-bar">
+                      <div class="country-bar" style={`width:${((u.count / topUtmSource[0]!.count) * 100).toFixed(1)}%`}></div>
+                    </div>
+                    <span class="bar-row-num">{fmtNum(u.count)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {topUtmMedium.length > 0 && (
+            <div class="card">
+              <h2 class="section-title">UTM Medium</h2>
+              <div class="bar-table">
+                {topUtmMedium.map(u => (
+                  <div class="bar-row">
+                    <span class="bar-row-label">{u.name}</span>
+                    <div class="country-bar-wrap bar-row-bar">
+                      <div class="country-bar" style={`width:${((u.count / topUtmMedium[0]!.count) * 100).toFixed(1)}%`}></div>
+                    </div>
+                    <span class="bar-row-num">{fmtNum(u.count)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {topUtmCampaign.length > 0 && (
+            <div class="card">
+              <h2 class="section-title">UTM Campaign</h2>
+              <div class="bar-table">
+                {topUtmCampaign.map(u => (
+                  <div class="bar-row">
+                    <span class="bar-row-label">{u.name}</span>
+                    <div class="country-bar-wrap bar-row-bar">
+                      <div class="country-bar" style={`width:${((u.count / topUtmCampaign[0]!.count) * 100).toFixed(1)}%`}></div>
+                    </div>
+                    <span class="bar-row-num">{fmtNum(u.count)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      <!-- Core Web Vitals -->
+      {(cwvLCP.total > 0 || cwvCLS.total > 0 || cwvINP.total > 0) && (
+        <div class="card">
+          <h2 class="section-title">Core Web Vitals</h2>
+          <div class="cwv-grid">
+            {([
+              { name: 'LCP', desc: 'Largest Contentful Paint', data: cwvLCP },
+              { name: 'CLS', desc: 'Cumulative Layout Shift',  data: cwvCLS },
+              { name: 'INP', desc: 'Interaction to Next Paint', data: cwvINP },
+            ] as const).filter(m => m.data.total > 0).map(m => (
+              <div class="cwv-metric">
+                <div class="cwv-name">{m.name}</div>
+                <div class="cwv-desc">{m.desc}</div>
+                <div class="cwv-stacked-bar">
+                  <div class="cwv-seg cwv-good"  style={`width:${((m.data.good / m.data.total) * 100).toFixed(1)}%`} title={`Good: ${m.data.good}`}></div>
+                  <div class="cwv-seg cwv-ni"    style={`width:${((m.data.ni   / m.data.total) * 100).toFixed(1)}%`} title={`Needs improvement: ${m.data.ni}`}></div>
+                  <div class="cwv-seg cwv-poor"  style={`width:${((m.data.poor / m.data.total) * 100).toFixed(1)}%`} title={`Poor: ${m.data.poor}`}></div>
+                </div>
+                <div class="cwv-legend">
+                  <span class="cwv-l cwv-l-good">Good {((m.data.good / m.data.total) * 100).toFixed(0)}%</span>
+                  <span class="cwv-l cwv-l-ni">NI {((m.data.ni / m.data.total) * 100).toFixed(0)}%</span>
+                  <span class="cwv-l cwv-l-poor">Poor {((m.data.poor / m.data.total) * 100).toFixed(0)}%</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <!-- Per-page scroll depth -->
+      {perPageScroll.length > 0 && (
+        <div class="card">
+          <h2 class="section-title">Scroll depth by page</h2>
+          <div class="ppscroll-table">
+            <div class="ppscroll-head">
+              <span>Page</span>
+              <span class="ppscroll-cell">25%</span>
+              <span class="ppscroll-cell">50%</span>
+              <span class="ppscroll-cell">75%</span>
+              <span class="ppscroll-cell">100%</span>
+            </div>
+            {perPageScroll.map(p => {
+              const get = (pct: number) => p.depth.find(d => Number(d.name) === pct)?.count ?? 0;
+              const base = get(25) || 1;
+              return (
+                <div class="ppscroll-row">
+                  <span class="ppscroll-page mono">{p.page}</span>
+                  {[25, 50, 75, 100].map(pct => {
+                    const n = get(pct);
+                    const frac = n / base;
+                    return (
+                      <span class="ppscroll-cell" title={`${fmtNum(n)} reached ${pct}%`}>
+                        <span class="ppscroll-pip" style={`opacity:${0.2 + frac * 0.8}`} data-n={n}></span>
+                      </span>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <!-- Recent visitors feed -->
+      <div class="card">
+        <div class="feed-header">
+          <h2 class="section-title" style="margin:0">Recent visitors</h2>
+          <span class="feed-live" id="feed-dot" title="Auto-refreshes every 30s"></span>
+        </div>
+        <div id="recent-feed">
+          {recentEvents.length === 0 ? (
+            <p class="feed-empty">No visits recorded yet.</p>
+          ) : (
+            <div class="feed-list">
+              {recentEvents.map(e => (
+                <div class="feed-row">
+                  <span class="feed-page mono">{e.page}</span>
+                  <span class="feed-meta">
+                    {flag(e.country)} {e.country}
+                    {e.referrer && e.referrer !== 'Direct' && <span class="feed-ref"> · {e.referrer}</span>}
+                    <span class="feed-device"> · {e.device}</span>
+                  </span>
+                  <span class="feed-time" data-ts={e.ts}>{e.ts}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
     </div>
+
+    <script define:vars={{ dailyViews, dailyVisitors, topPages, topReferrers, topCountries, topCities, sevenDayViews, thirtyDayViews, totalViews, dailyAvg, thirtyDayVisitors }}>
+      // ── CSV Export ─────────────────────────────────────────────────────────
+      function downloadCSV(filename: string, rows: string[][]) {
+        const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(a.href);
+      }
+
+      document.getElementById('export-btn')?.addEventListener('click', () => {
+        const rows: string[][] = [
+          ['Date', 'Views', 'Visitors'],
+          ...(dailyViews as {date:string;views:number}[]).map((d, i) => [
+            d.date,
+            String(d.views),
+            String((dailyVisitors as {date:string;visitors:number}[])[i]?.visitors ?? 0),
+          ]),
+          [],
+          ['Metric', 'Value'],
+          ['Total views', String(totalViews)],
+          ['7-day views', String(sevenDayViews)],
+          ['30-day views', String(thirtyDayViews)],
+          ['30-day visitors (est)', String(thirtyDayVisitors)],
+          ['Daily avg (30d)', String(dailyAvg)],
+          [],
+          ['Page', 'Views'],
+          ...(topPages as {name:string;count:number}[]).map(p => [p.name, String(p.count)]),
+          [],
+          ['Source', 'Views'],
+          ...(topReferrers as {name:string;count:number}[]).map(r => [r.name, String(r.count)]),
+          [],
+          ['Country', 'Views'],
+          ...(topCountries as {name:string;count:number}[]).map(c => [c.name, String(c.count)]),
+          [],
+          ['City', 'Views'],
+          ...(topCities as {name:string;count:number}[]).map(c => [c.name, String(c.count)]),
+        ];
+        downloadCSV(`analytics-${new Date().toISOString().slice(0,10)}.csv`, rows);
+      });
+    </script>
 
     <script>
       // ── Opt-out toggle ──────────────────────────────────────────────────────
@@ -485,22 +1035,144 @@ function flag(code: string): string {
         updateBtn();
       });
 
-      const chart = document.getElementById('chart');
+      // ── Chart toggle (views / visitors) + avg-line sync ───────────────────
+      const chart = document.getElementById('chart') as HTMLElement | null;
+      const avgLine = document.getElementById('avg-line') as HTMLElement | null;
       const btns  = document.querySelectorAll<HTMLButtonElement>('.toggle-btn');
+      let currentMode: 'views' | 'visitors' = 'views';
+      let currentRange: '7' | '30' | '90' = '30';
+
+      function getBarHeight(wrap: HTMLElement): string {
+        const rKey = currentRange === '30' ? '' : currentRange; // '' = 30 (default dataset key)
+        const prefix = currentMode === 'views' ? 'vh' : 'uh';
+        const key = rKey ? `${prefix}${rKey}` : prefix;
+        return wrap.dataset[key] ?? '0';
+      }
+
+      function applyRange(range: '7' | '30' | '90') {
+        currentRange = range;
+        const rangeMap: Record<string, string> = { '7': '7', '30': '30', '90': '90' };
+        const titleEl = document.getElementById('chart-title');
+        if (titleEl) titleEl.textContent = `Last ${rangeMap[range]} days`;
+        chart?.querySelectorAll<HTMLElement>('.bar-wrap').forEach(wrap => {
+          const in7  = 'in7'  in wrap.dataset;
+          const in30 = 'in30' in wrap.dataset;
+          const show = range === '90' || (range === '30' && in30) || (range === '7' && in7);
+          wrap.style.display = show ? '' : 'none';
+          const bar = wrap.querySelector<HTMLElement>('.bar')!;
+          bar.style.height = getBarHeight(wrap) + '%';
+          const count = currentMode === 'visitors' ? wrap.dataset.uc : wrap.dataset.vc;
+          if (show) wrap.title = `${Number(count).toLocaleString()} ${currentMode} · ${wrap.dataset.date}`;
+        });
+        // Update avg line position
+        if (avgLine && chart) {
+          const modeKey = currentMode === 'views' ? 'Vh' : 'Uh';
+          const rangeKey = range === '30' ? 'avg' : range === '7' ? 'avg7' : 'avg90';
+          const h = chart.dataset[`${rangeKey}${modeKey}`] ?? '0';
+          avgLine.style.bottom = h + '%';
+        }
+        // Update range button state
+        document.querySelectorAll<HTMLElement>('.range-btn').forEach(b =>
+          b.classList.toggle('active', b.dataset.range === range)
+        );
+      }
+
       if (chart && btns.length) {
         btns.forEach(btn => {
           btn.addEventListener('click', () => {
-            const mode = btn.dataset.mode as 'views' | 'visitors';
+            currentMode = btn.dataset.mode as 'views' | 'visitors';
             btns.forEach(b => b.classList.toggle('active', b === btn));
             chart.querySelectorAll<HTMLElement>('.bar-wrap').forEach(wrap => {
+              if (wrap.style.display === 'none') return;
               const bar = wrap.querySelector<HTMLElement>('.bar')!;
-              bar.style.height = (mode === 'visitors' ? wrap.dataset.uh : wrap.dataset.vh) + '%';
-              const count = mode === 'visitors' ? wrap.dataset.uc : wrap.dataset.vc;
-              wrap.title = `${Number(count).toLocaleString()} ${mode} · ${wrap.dataset.date}`;
+              bar.style.height = getBarHeight(wrap) + '%';
+              const count = currentMode === 'visitors' ? wrap.dataset.uc : wrap.dataset.vc;
+              wrap.title = `${Number(count).toLocaleString()} ${currentMode} · ${wrap.dataset.date}`;
             });
+            // Shift avg line
+            if (avgLine && chart) {
+              const modeKey = currentMode === 'views' ? 'Vh' : 'Uh';
+              const rangeKey = currentRange === '30' ? 'avg' : currentRange === '7' ? 'avg7' : 'avg90';
+              avgLine.style.bottom = (chart.dataset[`${rangeKey}${modeKey}`] ?? '0') + '%';
+            }
           });
         });
       }
+
+      document.querySelectorAll<HTMLButtonElement>('.range-btn').forEach(btn => {
+        btn.addEventListener('click', () => applyRange(btn.dataset.range as '7' | '30' | '90'));
+      });
+
+      // ── Hourly chart: shift labels from UTC to viewer's local time ────────
+      const offsetHours = -(new Date().getTimezoneOffset() / 60);
+      const grid = document.getElementById('hourly-grid');
+      if (grid && offsetHours !== 0) {
+        const cells = Array.from(grid.querySelectorAll<HTMLElement>('.hour-cell'));
+        // Reorder DOM nodes by local hour
+        const sorted = [...cells].sort((a, b) => {
+          const la = (Number(a.dataset.utcHour) + offsetHours + 24) % 24;
+          const lb = (Number(b.dataset.utcHour) + offsetHours + 24) % 24;
+          return la - lb;
+        });
+        sorted.forEach((cell, i) => {
+          const utcH = Number(cell.dataset.utcHour);
+          const localH = (utcH + offsetHours + 24) % 24;
+          const label = cell.querySelector<HTMLElement>('.hour-label')!;
+          label.textContent = localH % 6 === 0 ? `${localH}h` : '';
+          const sign = offsetHours >= 0 ? '+' : '';
+          cell.title = cell.title.replace(/^\d+:00 UTC/, `${localH}:00 local (UTC${sign}${offsetHours})`);
+          grid.appendChild(cell);
+        });
+      }
+
+      // ── Relative timestamps in recent feed ───────────────────────────────
+      function relativeTime(iso: string): string {
+        const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+        if (diff < 60)   return `${diff}s ago`;
+        if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+        if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+        return `${Math.floor(diff / 86400)}d ago`;
+      }
+      function updateFeedTimes() {
+        document.querySelectorAll<HTMLElement>('.feed-time[data-ts]').forEach(el => {
+          el.textContent = relativeTime(el.dataset.ts!);
+        });
+      }
+      updateFeedTimes();
+
+      // ── Recent feed auto-poll every 30s ───────────────────────────────────
+      function countryFlag(code: string): string {
+        if (code.length !== 2) return '';
+        return String.fromCodePoint(
+          0x1F1E6 + code.toUpperCase().charCodeAt(0) - 65,
+          0x1F1E6 + code.toUpperCase().charCodeAt(1) - 65,
+        );
+      }
+      function renderFeed(events: Array<{ts:string;page:string;country:string;referrer:string;device:string}>) {
+        const feed = document.getElementById('recent-feed');
+        if (!feed) return;
+        if (!events.length) { feed.innerHTML = '<p class="feed-empty">No visits recorded yet.</p>'; return; }
+        feed.innerHTML = `<div class="feed-list">${events.map(e => `
+          <div class="feed-row">
+            <span class="feed-page mono">${e.page}</span>
+            <span class="feed-meta">${countryFlag(e.country)} ${e.country}${e.referrer && e.referrer !== 'Direct' ? ` · <span class="feed-ref">${e.referrer}</span>` : ''} · ${e.device}</span>
+            <span class="feed-time" data-ts="${e.ts}">${relativeTime(e.ts)}</span>
+          </div>`).join('')}</div>`;
+      }
+
+      const dot = document.getElementById('feed-dot');
+      setInterval(async () => {
+        try {
+          const res = await fetch('/api/recent');
+          if (!res.ok) return;
+          const events = await res.json() as Array<{ts:string;page:string;country:string;referrer:string;device:string}>;
+          renderFeed(events);
+          if (dot) { dot.classList.add('pulse'); setTimeout(() => dot.classList.remove('pulse'), 600); }
+        } catch { /* ignore */ }
+      }, 30_000);
+
+      // tick relative times every minute
+      setInterval(updateFeedTimes, 60_000);
     </script>
   </body>
 </html>
@@ -589,9 +1261,7 @@ function flag(code: string): string {
 
   @media (min-width: 600px) {
     .stats-grid { grid-template-columns: repeat(4, 1fr); }
-  }
-
-  /* ── Card ── */
+  }  /* ── Card ── */
   .card {
     background: var(--color-surface);
     border: 1px solid var(--color-border);
@@ -846,6 +1516,495 @@ function flag(code: string): string {
     font-size: 0.75rem;
     text-align: right;
     font-variant-numeric: tabular-nums;
+  }
+
+  /* ── Today bar highlight ── */
+  .bar.bar-today {
+    opacity: 1;
+    background: var(--color-text);
+  }
+
+  /* ── Stat card secondary line ── */
+  .stat-sub {
+    font-size: 0.6875rem;
+    color: var(--color-muted);
+    margin-top: 0.25rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ── Bar table (replaces data-table for distributional data) ── */
+  .bar-table {
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+  }
+
+  .bar-row {
+    display: grid;
+    grid-template-columns: 6rem 1fr 3rem;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.8125rem;
+  }
+
+  .bar-row-label {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 0.8125rem;
+  }
+
+  .bar-row-bar { flex: 1; }
+
+  .bar-row-num {
+    text-align: right;
+    color: var(--color-muted);
+    font-variant-numeric: tabular-nums;
+    font-size: 0.8125rem;
+  }
+
+  /* ── Hourly heatmap ── */
+  .hourly-grid {
+    display: flex;
+    align-items: flex-end;
+    gap: 3px;
+    height: 5rem;
+  }
+
+  .hour-cell {
+    flex: 1;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    cursor: default;
+  }
+
+  .hour-bar {
+    width: 100%;
+    background: var(--color-accent);
+    border-radius: 2px 2px 0 0;
+    opacity: 0.65;
+    transition: opacity 0.1s;
+    min-height: 0;
+  }
+
+  .hour-cell:hover .hour-bar { opacity: 1; }
+
+  .hour-label {
+    display: block;
+    font-size: 0.45rem;
+    color: var(--color-muted);
+    margin-top: 0.25rem;
+    white-space: nowrap;
+  }
+
+  /* ── Day-of-week chart ── */
+  .dow-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 0.5rem;
+    align-items: end;
+  }
+
+  .dow-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .dow-bar-wrap {
+    width: 100%;
+    height: 5rem;
+    display: flex;
+    align-items: flex-end;
+  }
+
+  .dow-bar {
+    width: 100%;
+    background: var(--color-accent);
+    border-radius: 2px 2px 0 0;
+    opacity: 0.7;
+    transition: opacity 0.1s;
+    min-height: 0;
+  }
+
+  .dow-cell:hover .dow-bar { opacity: 1; }
+
+  .dow-label {
+    font-size: 0.6875rem;
+    color: var(--color-muted);
+  }
+
+  .dow-count {
+    font-size: 0.6875rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-muted);
+  }
+
+  /* ── Avg reference line ───────────────────────────────────────────────── */
+  .chart {
+    position: relative;
+  }
+
+  .avg-line {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 1px;
+    border-top: 1.5px dashed var(--color-accent);
+    opacity: 0.55;
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  /* ── Milestone card ───────────────────────────────────────────────────── */
+  .milestone-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .milestone-label {
+    font-size: 0.6875rem;
+    color: var(--color-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .milestone-target {
+    font-size: 1rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .milestone-bar-bg {
+    height: 6px;
+    background: var(--color-card);
+    border-radius: 3px;
+    overflow: hidden;
+    border: 1px solid var(--color-border);
+  }
+
+  .milestone-bar-fill {
+    height: 100%;
+    background: var(--color-accent);
+    border-radius: 3px;
+    transition: width 0.6s ease;
+  }
+
+  .milestone-sub {
+    font-size: 0.6875rem;
+    color: var(--color-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ── Heatmap header ───────────────────────────────────────────────────── */
+  .heatmap-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+
+  .heatmap-header h2 {
+    flex: 1;
+    margin: 0;
+  }
+
+  .peak-hour-badge {
+    font-size: 0.6875rem;
+    background: var(--color-card);
+    border: 1px solid var(--color-border);
+    border-radius: 9999px;
+    padding: 0.125rem 0.625rem;
+    color: var(--color-muted);
+    white-space: nowrap;
+  }
+
+  .utc-note {
+    font-size: 0.6875rem;
+    color: var(--color-muted);
+  }
+
+  /* ── Recent visitors feed ─────────────────────────────────────────────── */
+  .feed-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .feed-header h2 {
+    margin: 0;
+    flex: 1;
+  }
+
+  .feed-live {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #4caf50;
+    flex-shrink: 0;
+    transition: box-shadow 0.3s;
+  }
+
+  .feed-live.pulse {
+    box-shadow: 0 0 0 4px rgba(76,175,80,0.3);
+  }
+
+  .feed-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .feed-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-rows: auto auto;
+    gap: 0.1rem 0.75rem;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--color-border);
+    font-size: 0.8125rem;
+  }
+
+  .feed-row:last-child {
+    border-bottom: none;
+  }
+
+  .feed-page {
+    grid-column: 1;
+    grid-row: 1;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .feed-meta {
+    grid-column: 1;
+    grid-row: 2;
+    color: var(--color-muted);
+    font-size: 0.75rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .feed-ref {
+    color: var(--color-muted);
+  }
+
+  .feed-time {
+    grid-column: 2;
+    grid-row: 1 / 3;
+    align-self: center;
+    color: var(--color-muted);
+    font-size: 0.6875rem;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .feed-empty {
+    color: var(--color-muted);
+    font-size: 0.875rem;
+    text-align: center;
+    padding: 1.5rem 0;
+  }
+
+  /* ── Three-column grid (UTM panels) ───────────────────────────────────── */
+  /* (already defined above; responsive override) */
+  @media (max-width: 680px) {
+    .three-col {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  /* ── Chart controls row (range + metric toggles) ─────────────────────── */
+  .chart-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .range-control {
+    display: flex;
+    gap: 2px;
+    background: var(--color-border);
+    border-radius: 6px;
+    padding: 2px;
+  }
+
+  .range-btn {
+    border: none;
+    background: transparent;
+    color: var(--color-muted);
+    font-family: var(--font-body);
+    font-size: 0.6875rem;
+    font-weight: 500;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.1s, color 0.1s;
+  }
+
+  .range-btn.active {
+    background: var(--color-surface);
+    color: var(--color-text);
+  }
+
+  .range-btn:hover:not(.active) { color: var(--color-text); }
+
+  /* ── Active now pulse ─────────────────────────────────────────────────── */
+  .active-count {
+    color: #4caf50;
+  }
+
+  /* ── Scroll step funnel ───────────────────────────────────────────────── */
+  .scroll-step-funnel {
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-end;
+  }
+
+  .ssf-col {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .ssf-bar-wrap {
+    width: 100%;
+    height: 80px;
+    display: flex;
+    align-items: flex-end;
+  }
+
+  .ssf-bar {
+    width: 100%;
+    background: var(--color-accent);
+    opacity: 0.65;
+    border-radius: 2px 2px 0 0;
+    min-height: 4px;
+    transition: opacity 0.1s;
+  }
+
+  .ssf-col:hover .ssf-bar { opacity: 1; }
+
+  .ssf-info {
+    text-align: center;
+    padding-top: 0.5rem;
+    width: 100%;
+  }
+
+  .ssf-milestone {
+    font-weight: 600;
+    font-size: 0.875rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .ssf-count {
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text);
+  }
+
+  .ssf-ret {
+    font-size: 0.6875rem;
+    color: var(--color-muted);
+    white-space: nowrap;
+  }
+
+  /* ── Core Web Vitals ──────────────────────────────────────────────────── */
+  .cwv-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+
+  .cwv-metric { display: flex; flex-direction: column; gap: 0.375rem; }
+
+  .cwv-name {
+    font-weight: 600;
+    font-size: 0.875rem;
+  }
+
+  .cwv-desc {
+    font-size: 0.75rem;
+    color: var(--color-muted);
+    margin-top: -0.25rem;
+  }
+
+  .cwv-stacked-bar {
+    display: flex;
+    height: 8px;
+    border-radius: 4px;
+    overflow: hidden;
+    background: var(--color-border);
+  }
+
+  .cwv-seg { height: 100%; transition: width 0.3s ease; }
+  .cwv-good { background: #4caf50; }
+  .cwv-ni   { background: #ff9800; }
+  .cwv-poor { background: #f44336; }
+
+  .cwv-legend {
+    display: flex;
+    gap: 0.75rem;
+    font-size: 0.6875rem;
+  }
+
+  .cwv-l { font-variant-numeric: tabular-nums; }
+  .cwv-l-good { color: #4caf50; }
+  .cwv-l-ni   { color: #ff9800; }
+  .cwv-l-poor { color: #f44336; }
+
+  /* ── Per-page scroll depth table ─────────────────────────────────────── */
+  .ppscroll-table {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .ppscroll-head,
+  .ppscroll-row {
+    display: grid;
+    grid-template-columns: 1fr repeat(4, 2.5rem);
+    align-items: center;
+    gap: 0.375rem;
+    font-size: 0.8125rem;
+  }
+
+  .ppscroll-head {
+    font-size: 0.6875rem;
+    color: var(--color-muted);
+    padding-bottom: 0.375rem;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .ppscroll-page {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .ppscroll-cell {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .ppscroll-pip {
+    display: block;
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    background: var(--color-accent);
   }
 </style>
 

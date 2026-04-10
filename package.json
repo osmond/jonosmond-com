@@ -17,6 +17,7 @@
     "@fontsource/instrument-serif": "^5.2.8",
     "@tailwindcss/vite": "^4.2.2",
     "astro": "^6.0.7",
-    "tailwindcss": "^4.2.2"
+    "tailwindcss": "^4.2.2",
+    "web-vitals": "^5.2.0"
   }
 }

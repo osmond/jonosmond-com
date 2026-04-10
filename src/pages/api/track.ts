@@ -56,16 +56,28 @@ export const POST: APIRoute = async ({ request }) => {
   let rawReferrer = '';
   let colorScheme = 'Unknown';
   let viewport = 'Unknown';
+  let isNew = false;
+  let isEntry = true;
+  let language = 'Unknown';
+  let utmSource = '';
+  let utmMedium = '';
+  let utmCampaign = '';
   try {
-    const body = await request.json() as { page?: unknown; referrer?: unknown; colorScheme?: unknown; viewport?: unknown };
-    if (typeof body.page === 'string') {
-      page = new URL(body.page, 'http://x').pathname.slice(0, 200);
-    }
-    if (typeof body.referrer === 'string') {
-      rawReferrer = body.referrer.trim().slice(0, 500);
-    }
+    const body = await request.json() as {
+      page?: unknown; referrer?: unknown; colorScheme?: unknown; viewport?: unknown;
+      isNew?: unknown; isEntry?: unknown; language?: unknown;
+      utmSource?: unknown; utmMedium?: unknown; utmCampaign?: unknown;
+    };
+    if (typeof body.page        === 'string') page        = new URL(body.page, 'http://x').pathname.slice(0, 200);
+    if (typeof body.referrer    === 'string') rawReferrer = body.referrer.trim().slice(0, 500);
     if (typeof body.colorScheme === 'string') colorScheme = body.colorScheme;
     if (typeof body.viewport    === 'string') viewport    = body.viewport;
+    if (typeof body.isNew       === 'boolean') isNew      = body.isNew;
+    if (typeof body.isEntry     === 'boolean') isEntry    = body.isEntry;
+    if (typeof body.language    === 'string') language    = body.language.slice(0, 20);
+    if (typeof body.utmSource   === 'string') utmSource   = body.utmSource.slice(0, 100);
+    if (typeof body.utmMedium   === 'string') utmMedium   = body.utmMedium.slice(0, 100);
+    if (typeof body.utmCampaign === 'string') utmCampaign = body.utmCampaign.slice(0, 100);
   } catch {
     // use defaults
   }
@@ -90,11 +102,62 @@ export const POST: APIRoute = async ({ request }) => {
   // UA parsing (ua already fetched above for bot check)
   const { browser, os, device } = parseUA(ua);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  const today = now.toISOString().slice(0, 10);
+  const hour  = now.getUTCHours(); // 0-23
 
   // Hash the visitor's IP for privacy — never store the raw IP
   const ip = request.headers.get('x-forwarded-for')?.split(',')[0].trim() ?? 'unknown';
   const visitorHash = await hashIp(ip, restToken.slice(0, 16));
+
+  const returnType = isNew ? 'New' : 'Returning';
+
+  // Normalise language to primary subtag (e.g. "en-US" → "en")
+  const lang = language.split('-')[0]?.toLowerCase() ?? 'unknown';
+
+  // Recent-events record (no PII — no IP, no full UA)
+  const recentEvent = JSON.stringify({
+    ts: now.toISOString(),
+    page,
+    country,
+    referrer,
+    device,
+  });
+
+  const pipeline: (string | number)[][] = [
+    ['INCR',    'pv:total'],
+    ['INCR',    `pv:day:${today}`],
+    ['HINCRBY', 'pv:hourly',   String(hour), 1],
+    ['ZINCRBY', 'pages',        1, page],
+    ['ZINCRBY', 'referrers',    1, referrer],
+    ['ZINCRBY', 'countries',    1, country],
+    ['ZINCRBY', 'cities',       1, city],
+    ['ZINCRBY', 'browsers',     1, browser],
+    ['ZINCRBY', 'os',           1, os],
+    ['ZINCRBY', 'devices',      1, device],
+    ['ZINCRBY', 'timezones',    1, timezone],
+    ['ZINCRBY', 'colorSchemes', 1, colorScheme],
+    ['ZINCRBY', 'viewports',    1, viewport],
+    ['ZINCRBY', 'visitor_type', 1, returnType],
+    ['ZINCRBY', 'languages',    1, lang],
+    // Session tracking for bounce rate approximation
+    ...(isEntry
+      ? [['INCR', 'sessions_total']]
+      : [['INCR', 'sessions_engaged']]) as (string | number)[][],
+    ['SADD',    `visitors:day:${today}`, visitorHash],
+    ['EXPIRE',  `pv:day:${today}`,       7_776_000],
+    ['EXPIRE',  `visitors:day:${today}`, 7_776_000],
+    // Recent events feed (capped at 50)
+    ['LPUSH',  'recent_events', recentEvent],
+    ['LTRIM',  'recent_events', 0, 49],
+  ];
+
+  if (isEntry) {
+    pipeline.push(['ZINCRBY', 'entry_pages', 1, page]);
+  }
+  if (utmSource)   pipeline.push(['ZINCRBY', 'utm_source',   1, utmSource]);
+  if (utmMedium)   pipeline.push(['ZINCRBY', 'utm_medium',   1, utmMedium]);
+  if (utmCampaign) pipeline.push(['ZINCRBY', 'utm_campaign', 1, utmCampaign]);
 
   await fetch(`${restUrl}/pipeline`, {
     method: 'POST',
@@ -102,23 +165,7 @@ export const POST: APIRoute = async ({ request }) => {
       Authorization: `Bearer ${restToken}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify([
-      ['INCR',    'pv:total'],
-      ['INCR',    `pv:day:${today}`],
-      ['ZINCRBY', 'pages',        1, page],
-      ['ZINCRBY', 'referrers',    1, referrer],
-      ['ZINCRBY', 'countries',    1, country],
-      ['ZINCRBY', 'cities',       1, city],
-      ['ZINCRBY', 'browsers',     1, browser],
-      ['ZINCRBY', 'os',           1, os],
-      ['ZINCRBY', 'devices',      1, device],
-      ['ZINCRBY', 'timezones',    1, timezone],
-      ['ZINCRBY', 'colorSchemes', 1, colorScheme],
-      ['ZINCRBY', 'viewports',    1, viewport],
-      ['SADD',    `visitors:day:${today}`, visitorHash],
-      ['EXPIRE',  `pv:day:${today}`,       7_776_000],
-      ['EXPIRE',  `visitors:day:${today}`, 7_776_000],
-    ]),
+    body: JSON.stringify(pipeline),
   });
 
   return new Response(null, { status: 204 });
