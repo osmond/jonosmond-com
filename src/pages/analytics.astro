@@ -240,6 +240,23 @@ const delta7Day    = calcDelta(sevenDayViews, lastWeekViews);
 const deltaToday   = calcDelta(todayViews, yesterdayViews);
 const deltaVisitor = calcDelta(todayVisitors, yesterdayVisitors);
 
+// Delta display helpers (neutral when pct === 0)
+function deltaClass(d: Delta): string {
+  if (d === null || d.pct === 0) return 'stat-delta neutral';
+  return `stat-delta ${d.positive ? 'pos' : 'neg'}`;
+}
+function deltaArrow(d: Delta): string {
+  if (d === null || d.pct === 0) return '–';
+  return d.positive ? '▲' : '▼';
+}
+
+// Last-updated timestamp (server render time)
+const renderTime = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
+
+// First date with pageview data (for all-time sub-label)
+const firstDataDate = dailyViews.find(d => d.views > 0)?.date ?? days[0]!;
+const firstDataFmt  = new Date(firstDataDate + 'T00:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+
 // Views-per-visitor ratio for today and 30-day
 const todayVpv      = todayVisitors > 0 ? (todayViews / todayVisitors).toFixed(1) : null;
 const thirtyDayVpv  = thirtyDayVisitors > 0 ? (thirtyDayViews / thirtyDayVisitors).toFixed(1) : null;
@@ -306,33 +323,35 @@ const perPageScroll = scrollPages.map((pg, i) => ({
           <h1>Analytics</h1>
           <div class="header-actions">
             <button id="export-btn" class="export-btn">Export CSV</button>
-            <button id="opt-out-btn" class="opt-btn"></button>
-            <a href="/analytics" class="refresh" onclick="event.preventDefault();location.reload()">Refresh</a>
+            <a href="/analytics" class="refresh" id="refresh-link" onclick="event.preventDefault();this.textContent='Loading\u2026';this.style.pointerEvents='none';location.reload()">Refresh</a>
+            <button id="opt-out-btn" class="opt-link"></button>
           </div>
         </div>
+        <p class="updated-time">Updated {renderTime}</p>
       </header>
 
       <!-- Stats -->
       <div class="stats-grid">
-        <div class="card">
+        <div class="card card-primary">
           <div class="stat-value">{fmtNum(totalViews)}</div>
           <div class="stat-label">All-time views</div>
+          <div class="stat-sub">since {firstDataFmt}</div>
         </div>
-        <div class="card">
+        <div class="card card-primary">
           <div class="stat-value">{fmtNum(sevenDayViews)}</div>
           <div class="stat-label">Last 7 days</div>
           {delta7Day && (
-            <div class={`stat-delta ${delta7Day.positive ? 'pos' : 'neg'}`}>
-              {delta7Day.positive ? '▲' : '▼'} {Math.abs(delta7Day.pct)}% vs prev week
+            <div class={deltaClass(delta7Day)}>
+              {deltaArrow(delta7Day)} {Math.abs(delta7Day.pct)}% vs prev week
             </div>
           )}
         </div>
-        <div class="card">
+        <div class="card card-primary">
           <div class="stat-value">{fmtNum(todayViews)}</div>
           <div class="stat-label">Today's views</div>
           {deltaToday && (
-            <div class={`stat-delta ${deltaToday.positive ? 'pos' : 'neg'}`}>
-              {deltaToday.positive ? '▲' : '▼'} {Math.abs(deltaToday.pct)}% vs yesterday
+            <div class={deltaClass(deltaToday)}>
+              {deltaArrow(deltaToday)} {Math.abs(deltaToday.pct)}% vs yesterday
             </div>
           )}
           {todayVpv && <div class="stat-sub">{todayVpv} views/visitor</div>}
@@ -341,8 +360,8 @@ const perPageScroll = scrollPages.map((pg, i) => ({
           <div class="stat-value">{fmtNum(todayVisitors)}</div>
           <div class="stat-label">Today's visitors</div>
           {deltaVisitor && (
-            <div class={`stat-delta ${deltaVisitor.positive ? 'pos' : 'neg'}`}>
-              {deltaVisitor.positive ? '▲' : '▼'} {Math.abs(deltaVisitor.pct)}% vs yesterday
+            <div class={deltaClass(deltaVisitor)}>
+              {deltaArrow(deltaVisitor)} {Math.abs(deltaVisitor.pct)}% vs yesterday
             </div>
           )}
         </div>
@@ -368,7 +387,7 @@ const perPageScroll = scrollPages.map((pg, i) => ({
         <div class="card">
           <div class="stat-value">{fmtNum(thirtyDayVisitors)}</div>
           <div class="stat-label">~30-day visitors</div>
-          <div class="stat-sub">Est. (may overlap)</div>
+          <div class="stat-sub"><abbr class="est-tip" title="Sums daily unique visitor counts — may double-count visitors across days">Est. ⓘ</abbr></div>
         </div>
         {nextMilestone !== null && (
           <div class="card milestone-card">
@@ -406,6 +425,7 @@ const perPageScroll = scrollPages.map((pg, i) => ({
               <button class="range-btn active" data-range="30">30d</button>
               <button class="range-btn" data-range="90">90d</button>
             </div>
+            <span class="ctrl-sep" aria-hidden="true"></span>
             <div class="chart-toggle" role="group" aria-label="Chart metric">
               <button class="toggle-btn active" data-mode="views">Views</button>
               <button class="toggle-btn" data-mode="visitors">Visitors</button>
@@ -451,6 +471,8 @@ const perPageScroll = scrollPages.map((pg, i) => ({
           })}
         </div>
       </div>
+
+      <h2 class="group-heading">Acquisition</h2>
 
       <!-- Pages + Sources -->
       <div class={`bottom-grid${topReferrers.length === 0 ? ' single' : ''}`}>
@@ -529,6 +551,8 @@ const perPageScroll = scrollPages.map((pg, i) => ({
           )}
         </div>
       )}
+
+      <h2 class="group-heading">Audience</h2>
 
       <!-- Devices + Browsers + OS -->
       {(topDevices.length > 0 || topBrowsers.length > 0 || topOS.length > 0) && (
@@ -639,6 +663,8 @@ const perPageScroll = scrollPages.map((pg, i) => ({
       )}
 
 
+      <h2 class="group-heading">Behavior</h2>
+
       <!-- Scroll depth + Outbound clicks -->
       {(scrollFunnel.some(r => r.count > 0) || topClicks.length > 0) && (
         <div class="two-col">
@@ -659,7 +685,7 @@ const perPageScroll = scrollPages.map((pg, i) => ({
                       <div class="ssf-info">
                         <div class="ssf-milestone">{row.pct}%</div>
                         <div class="ssf-count">{fmtNum(row.count)}</div>
-                        <div class="ssf-ret">{i === 0 ? `${ofTotal}% of views` : `${retained}% of 25%`}</div>
+                        <div class="ssf-ret">{i === 0 ? `${ofTotal}% of all pageviews` : `${retained}% continued`}</div>
                       </div>
                     </div>
                   );
@@ -755,20 +781,27 @@ const perPageScroll = scrollPages.map((pg, i) => ({
       )}
 
       <!-- Day-of-week chart -->
-      <div class="card">
-        <h2 class="section-title">Avg. views by day of week (30d)</h2>
-        <div class="dow-grid">
-          {dowAvg.map(d => (
-            <div class="dow-cell" title={`${d.label} — avg ${d.avg} views`}>
-              <div class="dow-bar-wrap">
-                <div class="dow-bar" style={`height:${d.avg > 0 ? Math.max((d.avg / maxDowAvg) * 100, 5).toFixed(1) : 0}%`}></div>
+      {dowAvg.some(d => d.avg > 0) ? (
+        <div class="card">
+          <h2 class="section-title">Avg. views by day of week</h2>
+          <div class="dow-grid">
+            {dowAvg.map(d => (
+              <div class="dow-cell" title={`${d.label} — avg ${d.avg} views`}>
+                <div class="dow-bar-wrap">
+                  <div class="dow-bar" style={`height:${d.avg > 0 ? Math.max((d.avg / maxDowAvg) * 100, 5).toFixed(1) : 0}%`}></div>
+                </div>
+                <span class="dow-label">{d.label}</span>
+                <span class="dow-count">{d.avg}</span>
               </div>
-              <span class="dow-label">{d.label}</span>
-              <span class="dow-count">{d.avg}</span>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      </div>
+      ) : (
+        <div class="card">
+          <h2 class="section-title">Avg. views by day of week</h2>
+          <p class="feed-empty">Not enough data yet — check back after a few days.</p>
+        </div>
+      )}
 
       <!-- Entry / Exit pages + Languages -->
       {(topEntryPages.length > 0 || topExitPages.length > 0 || topLanguages.length > 0) && (
@@ -878,6 +911,8 @@ const perPageScroll = scrollPages.map((pg, i) => ({
         </div>
       )}
 
+      <h2 class="group-heading">Technical</h2>
+
       <!-- Core Web Vitals -->
       {(cwvLCP.total > 0 || cwvCLS.total > 0 || cwvINP.total > 0) && (
         <div class="card">
@@ -949,7 +984,7 @@ const perPageScroll = scrollPages.map((pg, i) => ({
         </div>
         <div id="recent-feed">
           {recentEvents.length === 0 ? (
-            <p class="feed-empty">No visits recorded yet.</p>
+            <p class="feed-empty" id="feed-empty-msg">No visits recorded yet.</p>
           ) : (
             <div class="feed-list">
               {recentEvents.map(e => (
@@ -1021,10 +1056,15 @@ const perPageScroll = scrollPages.map((pg, i) => ({
       function updateBtn() {
         if (!btn) return;
         const excluded = localStorage.getItem(OPT_OUT_KEY) === '1';
-        btn.textContent = excluded ? 'You are excluded from data' : 'Exclude me from data';
+        btn.textContent = excluded ? 'Opted out ✓' : 'Opt out';
         btn.classList.toggle('excluded', excluded);
       }
       updateBtn();
+      // Update feed empty message for opted-out users on first load
+      const feedEmptyMsg = document.getElementById('feed-empty-msg');
+      if (feedEmptyMsg && localStorage.getItem(OPT_OUT_KEY) === '1') {
+        feedEmptyMsg.textContent = "You're excluded from tracking. Other visitors will appear here.";
+      }
       btn?.addEventListener('click', () => {
         const excluded = localStorage.getItem(OPT_OUT_KEY) === '1';
         if (excluded) {
@@ -1151,7 +1191,11 @@ const perPageScroll = scrollPages.map((pg, i) => ({
       function renderFeed(events: Array<{ts:string;page:string;country:string;referrer:string;device:string}>) {
         const feed = document.getElementById('recent-feed');
         if (!feed) return;
-        if (!events.length) { feed.innerHTML = '<p class="feed-empty">No visits recorded yet.</p>'; return; }
+        if (!events.length) {
+          const isOptOut = localStorage.getItem(OPT_OUT_KEY) === '1';
+          feed.innerHTML = `<p class="feed-empty" id="feed-empty-msg">${isOptOut ? "You're excluded from tracking. Other visitors will appear here." : 'No visits recorded yet.'}</p>`;
+          return;
+        }
         feed.innerHTML = `<div class="feed-list">${events.map(e => `
           <div class="feed-row">
             <span class="feed-page mono">${e.page}</span>
@@ -2005,6 +2049,80 @@ const perPageScroll = scrollPages.map((pg, i) => ({
     height: 14px;
     border-radius: 3px;
     background: var(--color-accent);
+  }
+
+  /* ── Delta neutral state ──────────────────────────────────────────────── */
+  .stat-delta.neutral { color: var(--color-muted); }
+
+  /* ── Primary stat cards (larger value) ────────────────────────────────── */
+  .card.card-primary .stat-value { font-size: 2.5rem; }
+
+  /* ── Opt-out demoted to link style ───────────────────────────────────── */
+  .opt-link {
+    background: none;
+    border: none;
+    color: var(--color-muted);
+    font-family: var(--font-body);
+    font-size: 0.75rem;
+    padding: 0;
+    cursor: pointer;
+    text-decoration: underline;
+    text-decoration-style: dotted;
+    text-underline-offset: 2px;
+    transition: color 0.1s;
+  }
+  .opt-link:hover { color: var(--color-text); }
+  .opt-link.excluded { color: #6aaf82; }
+
+  /* ── Export button ────────────────────────────────────────────────────── */
+  .export-btn {
+    background: none;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    color: var(--color-muted);
+    font-family: var(--font-body);
+    font-size: 0.75rem;
+    padding: 0.25rem 0.625rem;
+    cursor: pointer;
+    transition: border-color 0.1s, color 0.1s;
+  }
+  .export-btn:hover { border-color: var(--color-border-highlight); color: var(--color-text); }
+
+  /* ── Updated timestamp ────────────────────────────────────────────────── */
+  .updated-time {
+    margin: 0.2rem 0 0;
+    font-size: 0.75rem;
+    color: var(--color-muted);
+  }
+
+  /* ── Chart controls separator ─────────────────────────────────────────── */
+  .ctrl-sep {
+    display: inline-block;
+    width: 1px;
+    height: 1rem;
+    background: var(--color-border);
+    margin: 0 0.25rem;
+    flex-shrink: 0;
+  }
+
+  /* ── Section group headings ───────────────────────────────────────────── */
+  .group-heading {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--color-muted);
+    margin: 1rem 0 0;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  /* ── Est. tooltip ─────────────────────────────────────────────────────── */
+  abbr.est-tip {
+    cursor: help;
+    text-decoration: underline dotted;
+    text-decoration-color: var(--color-muted);
+    text-underline-offset: 2px;
   }
 </style>
 
