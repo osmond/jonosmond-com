@@ -1,0 +1,183 @@
+---
+---
+
+<section class="activity" id="github-activity" hidden>
+  <div class="activity__inner">
+    <span class="activity__label">recent activity</span>
+    <ul class="activity__list" id="github-activity-list" aria-label="Recent GitHub activity"></ul>
+  </div>
+</section>
+
+<script>
+  type GitHubEvent = {
+    type: 'PushEvent' | 'CreateEvent' | string;
+    repo: { name: string };
+    payload: {
+      commits?: Array<{ message: string }>;
+    };
+    created_at: string;
+  };
+
+  function relativeTime(dateStr: string): string {
+    const diff = Date.now() - new Date(dateStr).getTime();
+    const seconds = Math.floor(diff / 1000);
+    if (seconds < 60) return 'just now';
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    if (days < 30) return `${days} day${days === 1 ? '' : 's'} ago`;
+    const months = Math.floor(days / 30);
+    if (months < 12) return `${months} month${months === 1 ? '' : 's'} ago`;
+    const years = Math.floor(months / 12);
+    return `${years} year${years === 1 ? '' : 's'} ago`;
+  }
+
+  async function loadActivity() {
+    try {
+      const res = await fetch('https://api.github.com/users/osmond/events/public');
+      if (!res.ok) return;
+
+      const events = (await res.json()) as GitHubEvent[];
+
+      const filtered = events
+        .filter(e => e.type === 'PushEvent' || e.type === 'CreateEvent')
+        .slice(0, 5);
+
+      if (filtered.length === 0) return;
+
+      const list = document.getElementById('github-activity-list');
+      const section = document.getElementById('github-activity');
+      if (!list || !section) return;
+
+      const items = filtered.map(event => {
+        const repoFull = event.repo.name;
+        const repoShort = repoFull.replace(/^osmond\//, '');
+        const time = relativeTime(event.created_at);
+
+        const li = document.createElement('li');
+        li.className = 'activity__item';
+
+        const repoLink = document.createElement('a');
+        repoLink.className = 'activity__repo';
+        repoLink.href = `https://github.com/${repoFull}`;
+        repoLink.target = '_blank';
+        repoLink.rel = 'noopener noreferrer';
+        repoLink.textContent = repoShort;
+
+        const sep = document.createTextNode('\u00a0·\u00a0');
+
+        const timeSpan = document.createElement('span');
+        timeSpan.className = 'activity__time';
+        timeSpan.textContent = time;
+
+        if (event.type === 'PushEvent') {
+          const commits = event.payload.commits;
+          const rawMessage = commits && commits.length > 0
+            ? commits[0].message
+            : 'pushed';
+          const message = rawMessage.split('\n')[0];
+
+          const msgSpan = document.createElement('span');
+          msgSpan.className = 'activity__message';
+          msgSpan.textContent = message;
+
+          li.appendChild(msgSpan);
+          li.appendChild(document.createTextNode('\u00a0'));
+          li.appendChild(repoLink);
+          li.appendChild(sep);
+          li.appendChild(timeSpan);
+        } else {
+          // CreateEvent
+          const msgSpan = document.createElement('span');
+          msgSpan.className = 'activity__message';
+          msgSpan.textContent = 'created\u00a0';
+
+          li.appendChild(msgSpan);
+          li.appendChild(repoLink);
+          li.appendChild(sep);
+          li.appendChild(timeSpan);
+        }
+
+        return li;
+      });
+
+      list.replaceChildren(...items);
+      section.hidden = false;
+    } catch {
+      // fail silently
+    }
+  }
+
+  loadActivity();
+</script>
+
+<style>
+  .activity {
+    padding: clamp(4rem, 8vw, 7rem) clamp(2rem, 6vw, 5rem);
+    border-top: 1px solid var(--color-border);
+  }
+
+  .activity__inner {
+    max-width: 72rem;
+    width: 100%;
+    display: grid;
+    grid-template-columns: 8rem 1fr;
+    gap: 2rem;
+    align-items: start;
+  }
+
+  @media (max-width: 600px) {
+    .activity__inner {
+      grid-template-columns: 1fr;
+      gap: 1.25rem;
+    }
+  }
+
+  .activity__label {
+    font-family: var(--font-body);
+    font-size: 0.75rem;
+    font-weight: 500;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--color-accent);
+    padding-top: 0.35rem;
+  }
+
+  .activity__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .activity__item {
+    font-family: var(--font-body);
+    font-size: 0.9375rem;
+    line-height: 1.5;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .activity__message {
+    color: var(--color-text);
+  }
+
+  .activity__repo {
+    color: var(--color-muted);
+    text-decoration: none;
+    transition: color 0.2s;
+  }
+
+  .activity__repo:hover {
+    color: var(--color-text);
+  }
+
+  .activity__time {
+    color: var(--color-muted);
+  }
+</style>
