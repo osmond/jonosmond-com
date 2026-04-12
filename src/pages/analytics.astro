@@ -6,14 +6,14 @@ import '../styles/global.css';
 Astro.response.headers.set('Cache-Control', 'no-store');
 
 // ─── Password gate ────────────────────────────────────────────────────────────
-const analyticsPassword = import.meta.env.ANALYTICS_PASSWORD as string | undefined;
+const analyticsPassword = (import.meta.env.ANALYTICS_PASSWORD as string | undefined)?.trim();
 if (analyticsPassword) {
-  const supplied = Astro.url.searchParams.get('key') ?? Astro.cookies.get('analytics_key')?.value ?? '';
+  const supplied = (Astro.url.searchParams.get('key') ?? Astro.cookies.get('analytics_key')?.value ?? '').trim();
   if (supplied !== analyticsPassword) {
     // Set cookie on successful POST submission
     if (Astro.request.method === 'POST') {
       const form = await Astro.request.formData();
-      const attempt = form.get('key')?.toString() ?? '';
+      const attempt = (form.get('key')?.toString() ?? '').trim();
       if (attempt === analyticsPassword) {
         Astro.cookies.set('analytics_key', analyticsPassword, {
           httpOnly: true,
