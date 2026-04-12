@@ -230,6 +230,8 @@ const links = [
     letter-spacing: 0.02em;
     margin: 0 0 clamp(1.5rem, 3vw, 2.5rem);
     opacity: 0.7;
+    /* Reserve the line height before JS fills it — prevents CLS */
+    min-height: 1.3em;
   }
 
   .hero__links {

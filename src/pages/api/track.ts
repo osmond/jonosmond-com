@@ -120,8 +120,10 @@ export const POST: APIRoute = async ({ request }) => {
     ts: now.toISOString(),
     page,
     country,
+    city: city !== 'Unknown' ? city : undefined,
     referrer,
     device,
+    ...(utmSource ? { utm: utmSource } : {}),
   });
 
   const pipeline: (string | number)[][] = [

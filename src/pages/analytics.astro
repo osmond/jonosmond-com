@@ -128,7 +128,7 @@ const topUtmCampaign   = parseZSet(results[2 * N + 22]);
 
 // Recent events feed
 const rawRecent = (results[2 * N + 23] ?? []) as string[];
-interface RecentEvent { ts: string; page: string; country: string; referrer: string; device: string; }
+interface RecentEvent { ts: string; page: string; country: string; city?: string; referrer: string; device: string; utm?: string; }
 const recentEvents: RecentEvent[] = rawRecent.map(s => {
   try { return JSON.parse(s) as RecentEvent; } catch { return null; }
 }).filter((e): e is RecentEvent => e !== null);
@@ -991,8 +991,9 @@ const perPageScroll = scrollPages.map((pg, i) => ({
                 <div class="feed-row">
                   <span class="feed-page mono">{e.page}</span>
                   <span class="feed-meta">
-                    {flag(e.country)} {e.country}
+                    {flag(e.country)} {e.country}{e.city ? `, ${e.city}` : ''}
                     {e.referrer && e.referrer !== 'Direct' && <span class="feed-ref"> · {e.referrer}</span>}
+                    {e.utm && <span class="feed-utm"> via {e.utm}</span>}
                     <span class="feed-device"> · {e.device}</span>
                   </span>
                   <span class="feed-time" data-ts={e.ts}>{e.ts}</span>
@@ -1841,6 +1842,12 @@ const perPageScroll = scrollPages.map((pg, i) => ({
 
   .feed-ref {
     color: var(--color-muted);
+  }
+
+  .feed-utm {
+    color: var(--accent);
+    font-size: 0.75rem;
+    opacity: 0.8;
   }
 
   .feed-time {

@@ -206,6 +206,8 @@
 
   .currently__content {
     transition: opacity 0.2s ease;
+    /* Reserve enough height for the track card before Spotify loads — prevents CLS */
+    min-height: clamp(4.5rem, 9vw, 8rem);
   }
 
   .currently__skeleton {
@@ -216,7 +218,8 @@
   }
 
   .skeleton__title {
-    height: clamp(2rem, 4vw, 3rem);
+    /* Match track__name font size so skeleton & content occupy the same vertical space */
+    height: clamp(2rem, 5vw, 4.5rem);
     width: clamp(240px, 50%, 480px);
     border-radius: 4px;
     background: rgba(245, 244, 240, 0.05);
