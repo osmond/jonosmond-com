@@ -140,6 +140,11 @@ const ogImage = new URL('/og.svg', Astro.site ?? 'https://jonosmond.com');
           const target = (e.target as Element).closest('a');
           if (!target) return;
           const href = target.getAttribute('href') ?? '';
+          // Track mailto: links as "email"
+          if (href.startsWith('mailto:')) {
+            sendEvent({ type: 'click', value: 'email', page });
+            return;
+          }
           if (!href.startsWith('http')) return; // internal links & anchors
           try {
             const host = new URL(href).hostname.replace(/^www\./, '');

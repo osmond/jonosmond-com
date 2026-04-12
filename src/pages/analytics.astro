@@ -5,6 +5,33 @@ import '../styles/global.css';
 
 Astro.response.headers.set('Cache-Control', 'no-store');
 
+// ─── Password gate ────────────────────────────────────────────────────────────
+const analyticsPassword = import.meta.env.ANALYTICS_PASSWORD as string | undefined;
+if (analyticsPassword) {
+  const supplied = Astro.url.searchParams.get('key') ?? Astro.cookies.get('analytics_key')?.value ?? '';
+  if (supplied !== analyticsPassword) {
+    // Set cookie on successful POST submission
+    if (Astro.request.method === 'POST') {
+      const form = await Astro.request.formData();
+      const attempt = form.get('key')?.toString() ?? '';
+      if (attempt === analyticsPassword) {
+        Astro.cookies.set('analytics_key', analyticsPassword, {
+          httpOnly: true,
+          secure: true,
+          sameSite: 'strict',
+          maxAge: 60 * 60 * 24 * 30, // 30 days
+          path: '/analytics',
+        });
+        return Astro.redirect('/analytics');
+      }
+    }
+    return new Response(
+      `<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Analytics</title><style>*{box-sizing:border-box}body{margin:0;min-height:100svh;display:grid;place-items:center;background:#0f0f0f;font-family:system-ui,sans-serif;color:#f5f4f0}form{display:flex;flex-direction:column;gap:1rem;width:min(320px,90vw)}input{background:#161616;border:1px solid rgba(245,244,240,0.1);border-radius:8px;padding:.75rem 1rem;color:#f5f4f0;font-size:1rem;outline:none}input:focus{border-color:rgba(196,107,75,0.6)}button{background:#c46b4b;border:none;border-radius:8px;padding:.75rem 1rem;color:#0f0f0f;font-size:1rem;font-weight:600;cursor:pointer}@media(prefers-color-scheme:light){body{background:#f5f0e8;color:#1a1714}input{background:#ede8df;border-color:rgba(26,23,20,0.1);color:#1a1714}}</style></head><body><form method="POST"><input type="password" name="key" placeholder="Password" autofocus autocomplete="current-password" /><button type="submit">View analytics</button></form></body></html>`,
+      { status: 401, headers: { 'Content-Type': 'text/html;charset=utf-8', 'Cache-Control': 'no-store' } },
+    );
+  }
+}
+
 // ─── Redis ────────────────────────────────────────────────────────────────────
 const redisUrl   = import.meta.env.UPSTASH_REDIS_REST_URL   as string;
 const redisToken = import.meta.env.UPSTASH_REDIS_REST_TOKEN as string;
