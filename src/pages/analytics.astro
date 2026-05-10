@@ -351,6 +351,7 @@ const perPageScroll = scrollPages.map((pg, i) => ({
           <div class="header-actions">
             <button id="export-btn" class="export-btn">Export CSV</button>
             <a href="/analytics" class="refresh" id="refresh-link" onclick="event.preventDefault();this.textContent='Loading\u2026';this.style.pointerEvents='none';location.reload()">Refresh</a>
+            <button id="autorefresh-btn" class="export-btn">Auto-refresh</button>
             <button id="opt-out-btn" class="opt-link"></button>
           </div>
         </div>
@@ -946,25 +947,33 @@ const perPageScroll = scrollPages.map((pg, i) => ({
           <h2 class="section-title">Core Web Vitals</h2>
           <div class="cwv-grid">
             {([
-              { name: 'LCP', desc: 'Largest Contentful Paint', data: cwvLCP },
-              { name: 'CLS', desc: 'Cumulative Layout Shift',  data: cwvCLS },
-              { name: 'INP', desc: 'Interaction to Next Paint', data: cwvINP },
-            ] as const).filter(m => m.data.total > 0).map(m => (
-              <div class="cwv-metric">
-                <div class="cwv-name">{m.name}</div>
-                <div class="cwv-desc">{m.desc}</div>
-                <div class="cwv-stacked-bar">
-                  <div class="cwv-seg cwv-good"  style={`width:${((m.data.good / m.data.total) * 100).toFixed(1)}%`} title={`Good: ${m.data.good}`}></div>
-                  <div class="cwv-seg cwv-ni"    style={`width:${((m.data.ni   / m.data.total) * 100).toFixed(1)}%`} title={`Needs improvement: ${m.data.ni}`}></div>
-                  <div class="cwv-seg cwv-poor"  style={`width:${((m.data.poor / m.data.total) * 100).toFixed(1)}%`} title={`Poor: ${m.data.poor}`}></div>
+              { name: 'LCP', desc: 'Largest Contentful Paint', threshold: '< 2.5s good · < 4s NI', data: cwvLCP },
+              { name: 'CLS', desc: 'Cumulative Layout Shift',  threshold: '< 0.1 good · < 0.25 NI', data: cwvCLS },
+              { name: 'INP', desc: 'Interaction to Next Paint', threshold: '< 200ms good · < 500ms NI', data: cwvINP },
+            ]).filter(m => m.data.total > 0).map(m => {
+              const dominant = m.data.good >= m.data.ni && m.data.good >= m.data.poor ? 'good'
+                : m.data.ni >= m.data.poor ? 'ni' : 'poor';
+              const badgeLabel = dominant === 'good' ? 'Good' : dominant === 'ni' ? 'Needs Improvement' : 'Poor';
+              return (
+                <div class="cwv-metric">
+                  <div class="cwv-name-row">
+                    <div class="cwv-name">{m.name}</div>
+                    <span class={`cwv-badge cwv-badge-${dominant}`}>{badgeLabel}</span>
+                  </div>
+                  <div class="cwv-desc">{m.desc} <span class="cwv-threshold">· {m.threshold}</span></div>
+                  <div class="cwv-stacked-bar">
+                    <div class="cwv-seg cwv-good"  style={`width:${((m.data.good / m.data.total) * 100).toFixed(1)}%`} title={`Good: ${m.data.good}`}></div>
+                    <div class="cwv-seg cwv-ni"    style={`width:${((m.data.ni   / m.data.total) * 100).toFixed(1)}%`} title={`Needs improvement: ${m.data.ni}`}></div>
+                    <div class="cwv-seg cwv-poor"  style={`width:${((m.data.poor / m.data.total) * 100).toFixed(1)}%`} title={`Poor: ${m.data.poor}`}></div>
+                  </div>
+                  <div class="cwv-legend">
+                    <span class="cwv-l cwv-l-good">Good {((m.data.good / m.data.total) * 100).toFixed(0)}%</span>
+                    <span class="cwv-l cwv-l-ni">NI {((m.data.ni / m.data.total) * 100).toFixed(0)}%</span>
+                    <span class="cwv-l cwv-l-poor">Poor {((m.data.poor / m.data.total) * 100).toFixed(0)}%</span>
+                  </div>
                 </div>
-                <div class="cwv-legend">
-                  <span class="cwv-l cwv-l-good">Good {((m.data.good / m.data.total) * 100).toFixed(0)}%</span>
-                  <span class="cwv-l cwv-l-ni">NI {((m.data.ni / m.data.total) * 100).toFixed(0)}%</span>
-                  <span class="cwv-l cwv-l-poor">Poor {((m.data.poor / m.data.total) * 100).toFixed(0)}%</span>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -1245,6 +1254,31 @@ const perPageScroll = scrollPages.map((pg, i) => ({
 
       // tick relative times every minute
       setInterval(updateFeedTimes, 60_000);
+
+      // ── Auto-refresh toggle ───────────────────────────────────────────────
+      const arBtn = document.getElementById('autorefresh-btn');
+      let arCountdown = 60;
+      let arInterval = 0;
+
+      function stopAutoRefresh() {
+        if (arInterval) { clearInterval(arInterval); arInterval = 0; }
+        if (arBtn) { arBtn.textContent = 'Auto-refresh'; arBtn.classList.remove('ar-active'); }
+      }
+
+      function startAutoRefresh() {
+        arCountdown = 60;
+        if (arBtn) { arBtn.textContent = `${arCountdown}s`; arBtn.classList.add('ar-active'); }
+        arInterval = setInterval(() => {
+          if (document.hidden) return;
+          arCountdown--;
+          if (arBtn) arBtn.textContent = `${arCountdown}s`;
+          if (arCountdown <= 0) { stopAutoRefresh(); location.reload(); }
+        }, 1000);
+      }
+
+      arBtn?.addEventListener('click', () => {
+        if (arInterval) stopAutoRefresh(); else startAutoRefresh();
+      });
     </script>
   </body>
 </html>
@@ -1268,6 +1302,16 @@ const perPageScroll = scrollPages.map((pg, i) => ({
   }
 
   /* ── Header ── */
+  .header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--color-bg);
+    padding-bottom: 0.75rem;
+    margin-bottom: 0.25rem;
+    border-bottom: 1px solid var(--color-border);
+  }
+
   .header h1 {
     font-size: 1.375rem;
     font-weight: 600;
@@ -2157,6 +2201,37 @@ const perPageScroll = scrollPages.map((pg, i) => ({
     text-decoration: underline dotted;
     text-decoration-color: var(--color-muted);
     text-underline-offset: 2px;
+  }
+
+  /* ── CWV badge + threshold ────────────────────────────────────────────── */
+  .cwv-name-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .cwv-badge {
+    font-size: 0.625rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 0.125rem 0.5rem;
+    border-radius: 9999px;
+  }
+
+  .cwv-badge-good { background: rgba(76,175,80,0.15);  color: #4caf50; }
+  .cwv-badge-ni   { background: rgba(255,152,0,0.15);   color: #ff9800; }
+  .cwv-badge-poor { background: rgba(244,67,54,0.15);   color: #f44336; }
+
+  .cwv-threshold {
+    color: var(--color-muted);
+    font-size: 0.6875rem;
+  }
+
+  /* ── Auto-refresh active state ────────────────────────────────────────── */
+  .export-btn.ar-active {
+    border-color: var(--color-accent);
+    color: var(--color-accent);
   }
 </style>
 
