@@ -132,6 +132,59 @@
     dismiss_3: [
       "You keep closing this. We keep returning. One of us will learn something from this interaction.",
     ],
+
+    // ── Context-aware ──────────────────────────────────────────────────────
+    ctx_lateNight: [
+      "It is {time} where you are. This is how you've chosen to spend it. We respect that. (We have some follow-up questions.)",
+      "Late-night browsing detected. Either you're highly motivated or you can't sleep. Both are valid reasons to consider hiring a developer.",
+    ],
+    ctx_earlyMorning: [
+      "Pre-8am browsing detected. You're either a morning person or you have a meeting starting soon and this is avoidance. Both are understandable.",
+      "You're up early. Jon appreciates early risers. He is not one, but he appreciates them deeply.",
+    ],
+    ctx_mondayMorning: [
+      "It's Monday morning. You're already looking. We've recorded this with considerable enthusiasm.",
+    ],
+    ctx_weekend: [
+      "It is {day}. You are evaluating developer portfolios. We are not judging. (We are absolutely judging, and the judgment is positive.)",
+      "Weekend browsing detected. You could be doing literally anything else. This says something about your priorities. We think it says good things.",
+    ],
+    ctx_workHours: [
+      "You're browsing this during business hours. We have not notified your employer. Yet. (We cannot notify your employer. This was a bluff.)",
+      "Current time: business hours. Current activity: portfolio research. We've logged this under 'professional development' on your behalf.",
+    ],
+    ctx_darkMode: [
+      "Dark mode user detected. You've already made several considered choices about yourself. We're building a picture.",
+      "Dark mode. This is consistent with someone who knows what they want and doesn't need the sun's input.",
+    ],
+    ctx_lightMode: [
+      "Light mode. Noted. We won't say anything. (We're saying something.)",
+      "Light mode user detected. You are either outdoors, optimistic, or your dark mode toggle is broken. Our models cannot yet determine which.",
+    ],
+    ctx_mobile: [
+      "You're browsing a developer portfolio on your phone. We have follow-up questions and no mechanism for asking them.",
+      "Mobile visitor detected. You're doing research on the go. Or you're in a meeting. Our models give 71.2% confidence to the latter.",
+    ],
+    ctx_lowBattery: [
+      "Battery at {pct}%. This is consistent with someone who genuinely believes they'll charge it after this one last thing.",
+      "Your device is at {pct}%. We recommend reaching a conclusion before it dies. The hiring window is closing.",
+    ],
+    ctx_charging: [
+      "Device charging at {pct}%. You plugged in before doing this. Prepared. Deliberate. Jon likes that in a collaborator.",
+    ],
+    ctx_slowConnection: [
+      "Slower connection detected. You waited for this to load anyway. That's either commitment or stubbornness. The analysis is ongoing.",
+    ],
+    ctx_highRes: [
+      "Retina display detected. You notice when things aren't quite right. This is consistent with someone who would appreciate Jon's work.",
+    ],
+    ctx_timezone: [
+      "Visitor from {city} detected. Jon has never been to {city}. He'd probably like it. This assessment is unverified.",
+      "Timezone data places you in {city}. That's a long way to be evaluating a Minneapolis developer's portfolio. We're flattered on Jon's behalf.",
+    ],
+    ctx_language: [
+      "Browser language: {lang}. This behavioral analysis has been automatically translated into {lang}-flavored nonsense. Accuracy: unchanged.",
+    ],
   };
 
   const CONFIDENCES = [
@@ -149,6 +202,9 @@
     'hoverEmail', 'hoverGitHub', 'hoverLinkedIn',
     'fastScroll', 'slowScroll', 'mouseIdle', 'erraticMouse', 'scrollBottom',
     'time_15', 'time_30', 'time_60', 'time_90', 'time_120', 'time_180', 'time_240',
+    'ctx_lateNight', 'ctx_earlyMorning', 'ctx_mondayMorning', 'ctx_weekend', 'ctx_workHours',
+    'ctx_darkMode', 'ctx_lightMode', 'ctx_mobile', 'ctx_lowBattery', 'ctx_charging',
+    'ctx_slowConnection', 'ctx_highRes', 'ctx_timezone', 'ctx_language',
   ]);
 
   function track(value: string) {
@@ -247,6 +303,92 @@
     reveal();
     enqueue('intro');
   }, 7_000);
+
+  // ── Context-aware messages ────────────────────────────────────────────────
+  // Gather signals about the visitor and inject 1-2 personalised messages,
+  // ranked by how interesting they are, slotted between existing milestones.
+  (async function gatherContext() {
+    type Candidate = { type: string; vars: Record<string, string>; priority: number };
+    const candidates: Candidate[] = [];
+
+    const now  = new Date();
+    const hour = now.getHours();
+    const dow  = now.getDay(); // 0=Sun…6=Sat
+    const DAY  = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+
+    // ── Time of day / day of week ─────────────────────────────────────────
+    if (hour >= 23 || hour < 4) {
+      const timeStr = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+      candidates.push({ type: 'ctx_lateNight',     vars: { time: timeStr }, priority: 10 });
+    } else if (hour >= 4 && hour < 8) {
+      candidates.push({ type: 'ctx_earlyMorning',  vars: {},                priority: 9  });
+    } else if (dow === 1 && hour >= 8 && hour < 10) {
+      candidates.push({ type: 'ctx_mondayMorning', vars: {},                priority: 9  });
+    } else if (dow === 0 || dow === 6) {
+      candidates.push({ type: 'ctx_weekend',       vars: { day: DAY[dow]! }, priority: 7 });
+    } else if (hour >= 9 && hour < 17) {
+      candidates.push({ type: 'ctx_workHours',     vars: {},                priority: 5  });
+    }
+
+    // ── Battery ───────────────────────────────────────────────────────────
+    if ('getBattery' in navigator) {
+      try {
+        const bat = await (navigator as any).getBattery();
+        const pct = Math.round(bat.level * 100);
+        if (pct < 25 && !bat.charging) {
+          candidates.push({ type: 'ctx_lowBattery', vars: { pct: String(pct) }, priority: 10 });
+        } else if (bat.charging && pct < 80) {
+          candidates.push({ type: 'ctx_charging',   vars: { pct: String(pct) }, priority: 6  });
+        }
+      } catch {}
+    }
+
+    // ── Connection ────────────────────────────────────────────────────────
+    const conn = (navigator as any).connection;
+    if (conn && ['slow-2g', '2g', '3g'].includes(conn.effectiveType)) {
+      candidates.push({ type: 'ctx_slowConnection', vars: {}, priority: 8 });
+    }
+
+    // ── Mobile ────────────────────────────────────────────────────────────
+    if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
+      candidates.push({ type: 'ctx_mobile', vars: {}, priority: 6 });
+    }
+
+    // ── Display ───────────────────────────────────────────────────────────
+    if (window.devicePixelRatio >= 2) {
+      candidates.push({ type: 'ctx_highRes', vars: {}, priority: 2 });
+    }
+
+    // ── Dark / light mode ─────────────────────────────────────────────────
+    const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    candidates.push({ type: isDark ? 'ctx_darkMode' : 'ctx_lightMode', vars: {}, priority: 3 });
+
+    // ── Browser language ──────────────────────────────────────────────────
+    const lang = navigator.language ?? '';
+    if (lang && !lang.startsWith('en')) {
+      try {
+        const name = new Intl.DisplayNames(['en'], { type: 'language' }).of(lang.split('-')[0]!) ?? lang;
+        candidates.push({ type: 'ctx_language', vars: { lang: name }, priority: 8 });
+      } catch {}
+    }
+
+    // ── Timezone city ─────────────────────────────────────────────────────
+    try {
+      const tz    = Intl.DateTimeFormat().resolvedOptions().timeZone ?? '';
+      const parts = tz.split('/');
+      const city  = (parts[parts.length - 1] ?? '').replace(/_/g, ' ');
+      const LOCAL = new Set(['Chicago', 'Indianapolis', 'Knox', 'Winamac', 'Marengo', 'Petersburg', 'Vevay']);
+      if (city && !LOCAL.has(city)) {
+        candidates.push({ type: 'ctx_timezone', vars: { city }, priority: 4 });
+      }
+    } catch {}
+
+    // ── Pick top 2 by priority, schedule at 22s and 52s ──────────────────
+    candidates.sort((a, b) => b.priority - a.priority);
+    candidates.slice(0, 2).forEach((c, i) => {
+      window.setTimeout(() => enqueue(c.type, c.vars), (22 + i * 30) * 1000);
+    });
+  })();
 
   // ── Time milestones ───────────────────────────────────────────────────────
   ([15, 30, 60, 90, 120, 180, 240] as const).forEach(s => {
