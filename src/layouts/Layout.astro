@@ -1,6 +1,7 @@
 ---
 import { ClientRouter } from 'astro:transitions';
 import '../styles/global.css';
+import AIAssistant from '../components/AIAssistant.astro';
 
 interface Props {
   title?: string;
@@ -181,5 +182,6 @@ const ogImage = new URL('/og.svg', Astro.site ?? 'https://jonosmond.com');
         onINP(reportVital);
       }
     </script>
+    <AIAssistant />
   </body>
 </html>

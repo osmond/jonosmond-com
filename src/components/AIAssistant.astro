@@ -1,0 +1,525 @@
+---
+// Behavioral Analysis Easter Egg
+// Starts as a believable personalization tool. Deteriorates from there.
+---
+
+<div id="ai-assistant" class="ai" aria-hidden="true">
+  <div class="ai__pill" id="ai-pill">
+    <span class="ai__dot" aria-hidden="true"></span>
+    <span class="ai__pill-label">Analyzing</span>
+  </div>
+
+  <div id="ai-card" class="ai__card">
+    <div class="ai__header">
+      <div class="ai__header-left">
+        <span class="ai__dot ai__dot--sm" aria-hidden="true"></span>
+        <span class="ai__label">BEHAVIORAL ANALYSIS</span>
+      </div>
+      <span class="ai__confidence" id="ai-confidence"></span>
+    </div>
+    <p class="ai__message" id="ai-message"></p>
+    <div class="ai__card-footer">
+      <button id="ai-dismiss" class="ai__dismiss">Noted.</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  // ── State ─────────────────────────────────────────────────────────────────
+  const state = {
+    visible: false,
+    cardOpen: false,
+    dismissCount: 0,
+    typeVariants: new Map() as Map<string, number>,
+    pageStartTime: Date.now(),
+    hasScrolledToBottom: false,
+    queue: [] as Array<{ type: string; vars: Record<string, string> }>,
+    processing: false,
+    autoHideTimer: 0,
+    mouseIdleTimer: 0,
+    erraticFired: false,
+    erraticResetTimer: 0,
+    scrollFastCount: 0,
+    scrollSlowCount: 0,
+    lastScrollY: window.scrollY,
+    lastScrollTime: Date.now(),
+    mousePositions: [] as Array<{ x: number; y: number; t: number }>,
+  };
+
+  // ── Message bank ──────────────────────────────────────────────────────────
+  // Ordered by escalation. Early entries = plausible. Late entries = unhinged.
+  const MESSAGES: Record<string, string[]> = {
+    intro: [
+      "Behavioral analysis initialized. Your interaction patterns are now being processed. This is completely normal and not at all invasive.",
+    ],
+
+    hoverEmail: [
+      "Hover event detected on email link ({d}s). You considered reaching out. The hesitation has been noted.",
+      "You've returned to the email link again. Classic approach-avoidance conflict. We've seen this before. Frequently.",
+      "Third hover on the email link. We're not going to pressure you. (We are, slightly, pressuring you.)",
+    ],
+
+    hoverGitHub: [
+      "GitHub link hover detected ({d}s). Due diligence is healthy. So is trust. Unclear which one this is.",
+      "You've returned to GitHub. We're not going to use the phrase 'background check.' We just used the phrase 'background check.'",
+    ],
+
+    hoverLinkedIn: [
+      "LinkedIn hover detected. Recruitment behavior flagged at 87.3% confidence. The remaining 12.7% is 'you just like the color blue.'",
+      "Second hover on LinkedIn. Confirmed: reconnaissance. Jon's connection count has been quietly notified.",
+    ],
+
+    fastScroll: [
+      "Elevated scroll velocity detected. You are a skimmer. You were also the kid who read the last chapter first.",
+      "Rapid scroll logged. You've processed this page the way most people process terms and conditions. Something important was missed. We know what it was.",
+      "High scroll speed. Our models give a 91.1% likelihood you'll need to come back and re-read something. We'll be here.",
+    ],
+
+    slowScroll: [
+      "Deliberate scroll pattern detected. You're thorough. Possibly overthinking. Almost certainly overthinking.",
+      "Extended time in the About section. Either you're genuinely impressed, or you're drafting a LinkedIn message in your head. Both are welcome outcomes.",
+      "Very slow, methodical browsing. You also read the entire menu before ordering the same thing you always get.",
+    ],
+
+    mouseIdle: [
+      "Cursor inactivity detected. Based on 14,000 behavioral data points, you are currently thinking about a conversation from approximately 3 years ago.",
+      "You've stopped moving. Processing... you just remembered something mildly embarrassing from 2019. We can tell by the stillness.",
+      "Prolonged idle state. For context, Jon has been actively working for {elapsed}. We're not making a comparison. We're just reporting facts.",
+    ],
+
+    erraticMouse: [
+      "Erratic cursor trajectory detected. This is consistent with either caffeine overconsumption or an unexpected calendar notification. We've flagged both.",
+      "High-velocity cursor movement logged. Excitement index: elevated. We have a hypothesis about the cause. It's this website.",
+      "Cursor velocity spike. Our models suggest you just thought of something. We don't know what it was. We wish we did.",
+    ],
+
+    scrollBottom: [
+      "You scrolled all the way to the footer. Completionist behavior confirmed. You also finish movies you're not enjoying, just to see how they end.",
+    ],
+
+    time_15: [
+      "Initial scan complete. You're still here. Interesting.",
+    ],
+    time_30: [
+      "30 seconds on site. The average visitor leaves in 8 seconds. You are 3.75× more engaged than average. We've flagged this for follow-up.",
+    ],
+    time_60: [
+      "One minute logged. At this stage our models indicate you are either genuinely interested, or distracted by another tab. Neither is shameful.",
+    ],
+    time_90: [
+      "90 seconds. That's longer than most people spend reading their own performance reviews. Make of that what you will.",
+    ],
+    time_120: [
+      "Two minutes on site. You're either seriously considering hiring Jon or you've forgotten this tab is open. Both are valid outcomes and we root for both equally.",
+    ],
+    time_180: [
+      "Three minutes. We've begun constructing a secondary profile. It's going well. You wouldn't like it.",
+    ],
+    time_240: [
+      "Four minutes. Our analysis indicates you've already made a decision and are currently seeking confirmation. Confirmation: yes. You're welcome.",
+    ],
+
+    dismiss_0: [
+      "Dismissal attempt noted. Avoidant attachment style: confirmed. We'll be back.",
+    ],
+    dismiss_1: [
+      "Second dismissal detected. Persistence logged and appended to your behavioral profile.",
+    ],
+    dismiss_2: [
+      "At this point, the repeated act of dismissing this panel is itself the data.",
+    ],
+    dismiss_3: [
+      "You keep closing this. We keep returning. One of us will learn something from this interaction.",
+    ],
+  };
+
+  const CONFIDENCES = [
+    '61.4%', '68.9%', '73.2%', '79.7%',
+    '82.3%', '87.4%', '88.8%', '91.1%',
+    '94.7%', '97.3%', '99.1%',
+  ];
+
+  function randConf() {
+    return CONFIDENCES[Math.floor(Math.random() * CONFIDENCES.length)] + ' confidence';
+  }
+
+  // ── Analytics tracking ────────────────────────────────────────────────────
+  const TRACKED_TRIGGERS = new Set([
+    'hoverEmail', 'hoverGitHub', 'hoverLinkedIn',
+    'fastScroll', 'slowScroll', 'mouseIdle', 'erraticMouse', 'scrollBottom',
+    'time_15', 'time_30', 'time_60', 'time_90', 'time_120', 'time_180', 'time_240',
+  ]);
+
+  function track(value: string) {
+    const body = JSON.stringify({ type: 'easter_egg', value });
+    const blob = new Blob([body], { type: 'application/json' });
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon('/api/event', blob);
+    } else {
+      fetch('/api/event', { method: 'POST', body, headers: { 'Content-Type': 'application/json' }, keepalive: true }).catch(() => {});
+    }
+  }
+
+  function getVariantMessage(type: string, vars: Record<string, string> = {}) {
+    const bank = MESSAGES[type];
+    if (!bank || bank.length === 0) return null;
+    const idx = state.typeVariants.get(type) ?? 0;
+    const clamped = Math.min(idx, bank.length - 1);
+    state.typeVariants.set(type, clamped + 1);
+    return bank[clamped].replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? `{${k}}`);
+  }
+
+  // ── DOM refs ──────────────────────────────────────────────────────────────
+  const assistant = document.getElementById('ai-assistant') as HTMLElement | null;
+  const card      = document.getElementById('ai-card') as HTMLElement | null;
+  const msgEl     = document.getElementById('ai-message') as HTMLElement | null;
+  const confEl    = document.getElementById('ai-confidence') as HTMLElement | null;
+  const dismissBtn = document.getElementById('ai-dismiss') as HTMLButtonElement | null;
+
+  // ── Visibility ────────────────────────────────────────────────────────────
+  function reveal() {
+    if (state.visible || !assistant) return;
+    state.visible = true;
+    assistant.classList.add('ai--visible');
+  }
+
+  function openCard(text: string) {
+    if (!card || !msgEl || !confEl) return;
+    clearTimeout(state.autoHideTimer);
+    track('shown');
+    msgEl.textContent = text;
+    confEl.textContent = randConf();
+    card.classList.add('ai__card--open');
+    state.cardOpen = true;
+    state.autoHideTimer = window.setTimeout(closeCard, 10_000);
+  }
+
+  function closeCard() {
+    clearTimeout(state.autoHideTimer);
+    card?.classList.remove('ai__card--open');
+    state.cardOpen = false;
+    window.setTimeout(drainQueue, 500);
+  }
+
+  // ── Queue ─────────────────────────────────────────────────────────────────
+  function enqueue(type: string, vars: Record<string, string> = {}) {
+    if (state.queue.some(m => m.type === type)) return; // no duplicates in queue
+    if (TRACKED_TRIGGERS.has(type)) track(type);
+    state.queue.push({ type, vars });
+    if (!state.processing) drainQueue();
+  }
+
+  function drainQueue() {
+    if (state.cardOpen || state.queue.length === 0) {
+      state.processing = false;
+      return;
+    }
+    state.processing = true;
+    const { type, vars } = state.queue.shift()!;
+    const text = getVariantMessage(type, vars);
+    if (text) {
+      reveal();
+      openCard(text);
+    } else {
+      drainQueue(); // skip exhausted message type
+    }
+  }
+
+  // ── Dismiss ───────────────────────────────────────────────────────────────
+  const DISMISS_LABELS = ['Noted.', 'Noted.', 'Noted.', 'I understand.', 'Please.', 'Fine.'];
+
+  dismissBtn?.addEventListener('click', () => {
+    closeCard();
+    track('dismissed');
+    const key = `dismiss_${Math.min(state.dismissCount, 3)}`;
+    const nextLabel = DISMISS_LABELS[Math.min(state.dismissCount + 1, DISMISS_LABELS.length - 1)];
+    state.dismissCount++;
+    // Sneak back in after a delay
+    window.setTimeout(() => {
+      if (dismissBtn) dismissBtn.textContent = nextLabel;
+      enqueue(key);
+    }, 3500 + Math.random() * 2000);
+  });
+
+  // ── Intro (delayed to feel like it "loaded" quietly) ──────────────────────
+  window.setTimeout(() => {
+    reveal();
+    enqueue('intro');
+  }, 7_000);
+
+  // ── Time milestones ───────────────────────────────────────────────────────
+  ([15, 30, 60, 90, 120, 180, 240] as const).forEach(s => {
+    window.setTimeout(() => enqueue(`time_${s}`), s * 1000);
+  });
+
+  // ── Link hover hesitation ─────────────────────────────────────────────────
+  type LinkConfig = { selector: string; type: string };
+  const LINK_CONFIGS: LinkConfig[] = [
+    { selector: 'a[href^="mailto"]',        type: 'hoverEmail'    },
+    { selector: 'a[href*="github.com"]',    type: 'hoverGitHub'   },
+    { selector: 'a[href*="linkedin.com"]',  type: 'hoverLinkedIn' },
+  ];
+
+  LINK_CONFIGS.forEach(({ selector, type }) => {
+    document.querySelectorAll<HTMLElement>(selector).forEach(link => {
+      let enterAt = 0;
+      const onEnter = () => { enterAt = Date.now(); };
+      const onLeave = () => {
+        if (!enterAt) return;
+        const secs = (Date.now() - enterAt) / 1000;
+        if (secs >= 1.2) enqueue(type, { d: secs.toFixed(1) });
+        enterAt = 0;
+      };
+      link.addEventListener('mouseenter', onEnter);
+      link.addEventListener('mouseleave', onLeave);
+      document.addEventListener('astro:before-swap', () => {
+        link.removeEventListener('mouseenter', onEnter);
+        link.removeEventListener('mouseleave', onLeave);
+      }, { once: true });
+    });
+  });
+
+  // ── Scroll speed + scroll-to-bottom ───────────────────────────────────────
+  const MAX_FAST_FIRES = 2;
+  const MAX_SLOW_FIRES = 2;
+
+  const onScroll = () => {
+    const now = Date.now();
+    const dy = Math.abs(window.scrollY - state.lastScrollY);
+    const dt = now - state.lastScrollTime;
+    if (dt > 60) {
+      const speed = dy / dt; // px/ms
+      if (speed > 2.8 && state.scrollFastCount < MAX_FAST_FIRES) {
+        state.scrollFastCount++;
+        enqueue('fastScroll');
+      } else if (speed < 0.25 && speed > 0 && window.scrollY > 300 && state.scrollSlowCount < MAX_SLOW_FIRES) {
+        state.scrollSlowCount++;
+        enqueue('slowScroll');
+      }
+      state.lastScrollY = window.scrollY;
+      state.lastScrollTime = now;
+    }
+
+    if (!state.hasScrolledToBottom) {
+      const atBottom = window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 60;
+      if (atBottom) {
+        state.hasScrolledToBottom = true;
+        enqueue('scrollBottom');
+      }
+    }
+  };
+
+  window.addEventListener('scroll', onScroll, { passive: true });
+
+  // ── Mouse: idle + erratic ─────────────────────────────────────────────────
+  const IDLE_DELAY = 20_000; // 20s no movement
+
+  function resetIdleTimer() {
+    clearTimeout(state.mouseIdleTimer);
+    state.mouseIdleTimer = window.setTimeout(() => {
+      const elapsed = Math.round((Date.now() - state.pageStartTime) / 1000);
+      const m = Math.floor(elapsed / 60);
+      const s = elapsed % 60;
+      const elapsedStr = m > 0 ? `${m}m ${s}s` : `${s}s`;
+      enqueue('mouseIdle', { elapsed: elapsedStr });
+    }, IDLE_DELAY);
+  }
+
+  const onMouseMove = (e: MouseEvent) => {
+    const now = Date.now();
+    state.mousePositions.push({ x: e.clientX, y: e.clientY, t: now });
+    if (state.mousePositions.length > 15) state.mousePositions.shift();
+    resetIdleTimer();
+
+    if (!state.erraticFired && state.mousePositions.length >= 12) {
+      const pts = state.mousePositions.slice(-12);
+      let dist = 0;
+      for (let i = 1; i < pts.length; i++) {
+        const dx = pts[i].x - pts[i - 1].x;
+        const dy = pts[i].y - pts[i - 1].y;
+        dist += Math.sqrt(dx * dx + dy * dy);
+      }
+      const span = pts[pts.length - 1].t - pts[0].t;
+      if (span > 0 && dist / span > 1.8) {
+        state.erraticFired = true;
+        window.setTimeout(() => enqueue('erraticMouse'), 400);
+        state.erraticResetTimer = window.setTimeout(() => { state.erraticFired = false; }, 45_000);
+      }
+    }
+  };
+
+  window.addEventListener('mousemove', onMouseMove);
+  resetIdleTimer();
+
+  // ── Cleanup on Astro view transitions ─────────────────────────────────────
+  document.addEventListener('astro:before-swap', () => {
+    clearTimeout(state.autoHideTimer);
+    clearTimeout(state.mouseIdleTimer);
+    clearTimeout(state.erraticResetTimer);
+    window.removeEventListener('scroll', onScroll);
+    window.removeEventListener('mousemove', onMouseMove);
+  }, { once: true });
+
+})();
+</script>
+
+<style>
+  /* ── Container ──────────────────────────────────────────────────────────── */
+  .ai {
+    position: fixed;
+    bottom: 1.5rem;
+    right: 1.5rem;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.5rem;
+    pointer-events: none;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: opacity 0.5s ease, transform 0.5s ease;
+  }
+
+  .ai--visible {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+  }
+
+  /* ── Pulsing dot ────────────────────────────────────────────────────────── */
+  .ai__dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--color-accent);
+    flex-shrink: 0;
+    animation: ai-pulse 2.4s ease-in-out infinite;
+  }
+
+  .ai__dot--sm {
+    width: 5px;
+    height: 5px;
+  }
+
+  @keyframes ai-pulse {
+    0%, 100% { opacity: 1;   transform: scale(1);   }
+    50%       { opacity: 0.3; transform: scale(0.75); }
+  }
+
+  /* ── Pill (collapsed state) ─────────────────────────────────────────────── */
+  .ai__pill {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.3rem 0.65rem;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 999px;
+    font-size: 0.625rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-muted);
+    user-select: none;
+  }
+
+  /* ── Card ───────────────────────────────────────────────────────────────── */
+  .ai__card {
+    width: 290px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border-highlight);
+    border-radius: 10px;
+    overflow: hidden;
+    opacity: 0;
+    transform: translateY(6px) scale(0.97);
+    transition: opacity 0.3s ease, transform 0.3s ease;
+    pointer-events: none;
+  }
+
+  .ai__card--open {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    pointer-events: auto;
+  }
+
+  /* ── Card header ────────────────────────────────────────────────────────── */
+  .ai__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.6rem 0.875rem;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .ai__header-left {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .ai__label {
+    font-size: 0.5625rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--color-muted);
+    font-family: var(--font-body);
+  }
+
+  .ai__confidence {
+    font-size: 0.5625rem;
+    font-weight: 500;
+    letter-spacing: 0.05em;
+    color: var(--color-accent);
+    font-family: var(--font-body);
+  }
+
+  /* ── Message ────────────────────────────────────────────────────────────── */
+  .ai__message {
+    margin: 0;
+    padding: 0.875rem;
+    font-size: 0.8125rem;
+    line-height: 1.6;
+    color: var(--color-text);
+    font-family: var(--font-body);
+  }
+
+  /* ── Footer / dismiss ───────────────────────────────────────────────────── */
+  .ai__card-footer {
+    display: flex;
+    justify-content: flex-end;
+    padding: 0 0.875rem 0.7rem;
+  }
+
+  .ai__dismiss {
+    font-family: var(--font-body);
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--color-muted);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0.25rem 0.4rem;
+    border-radius: 4px;
+    transition: color 0.15s ease, background 0.15s ease;
+    letter-spacing: 0.01em;
+  }
+
+  .ai__dismiss:hover {
+    color: var(--color-text);
+    background: var(--color-border);
+  }
+
+  /* ── Mobile: nudge slightly off edge ────────────────────────────────────── */
+  @media (max-width: 480px) {
+    .ai {
+      bottom: 1rem;
+      right: 1rem;
+    }
+
+    .ai__card {
+      width: calc(100vw - 2rem);
+    }
+  }
+</style>

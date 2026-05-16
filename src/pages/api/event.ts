@@ -76,6 +76,21 @@ export const POST: APIRoute = async ({ request }) => {
     if (!allowedMetrics.includes(metric) || !allowedRatings.includes(rating))
       return new Response(null, { status: 204 });
     pipeline.push(['HINCRBY', `cwv:${metric}`, rating, 1]);
+  } else if (type === 'easter_egg') {
+    const ALLOWED: Set<string> = new Set([
+      'shown', 'dismissed',
+      'hoverEmail', 'hoverGitHub', 'hoverLinkedIn',
+      'fastScroll', 'slowScroll', 'mouseIdle', 'erraticMouse', 'scrollBottom',
+      'time_15', 'time_30', 'time_60', 'time_90', 'time_120', 'time_180', 'time_240',
+    ]);
+    if (!ALLOWED.has(value)) return new Response(null, { status: 204 });
+    if (value === 'shown') {
+      pipeline.push(['INCR', 'easter_egg:shown']);
+    } else if (value === 'dismissed') {
+      pipeline.push(['INCR', 'easter_egg:dismissed']);
+    } else {
+      pipeline.push(['ZINCRBY', 'easter_egg:triggers', 1, value]);
+    }
   } else {
     return new Response(null, { status: 204 });
   }

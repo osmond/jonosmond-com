@@ -107,6 +107,10 @@ const results = await redisPipeline([
   ['HGETALL',  'cwv:LCP'],
   ['HGETALL',  'cwv:CLS'],
   ['HGETALL',  'cwv:INP'],
+  // Easter egg
+  ['GET',      'easter_egg:shown'],
+  ['GET',      'easter_egg:dismissed'],
+  ['ZREVRANGE','easter_egg:triggers', 0, -1, 'WITHSCORES'],
 ]);
 
 // ─── Parse ────────────────────────────────────────────────────────────────────
@@ -183,6 +187,28 @@ function parseCwv(raw: unknown) {
 const cwvLCP = parseCwv(results[2 * N + 27]);
 const cwvCLS = parseCwv(results[2 * N + 28]);
 const cwvINP = parseCwv(results[2 * N + 29]);
+
+// Easter egg
+const eggShown     = Number(results[2 * N + 30] ?? 0);
+const eggDismissed = Number(results[2 * N + 31] ?? 0);
+const eggTriggers  = parseZSet(results[2 * N + 32]);
+const EGG_TRIGGER_LABELS: Record<string, string> = {
+  hoverEmail:    'Hovered email link',
+  hoverGitHub:   'Hovered GitHub link',
+  hoverLinkedIn: 'Hovered LinkedIn link',
+  fastScroll:    'Fast scroll',
+  slowScroll:    'Slow scroll',
+  mouseIdle:     'Cursor idle',
+  erraticMouse:  'Erratic cursor',
+  scrollBottom:  'Scrolled to footer',
+  time_15:       '15s milestone',
+  time_30:       '30s milestone',
+  time_60:       '1min milestone',
+  time_90:       '90s milestone',
+  time_120:      '2min milestone',
+  time_180:      '3min milestone',
+  time_240:      '4min milestone',
+};
 
 // Active now (visits within last 5 min)
 const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
@@ -1012,9 +1038,47 @@ const perPageScroll = scrollPages.map((pg, i) => ({
         </div>
       )}
 
+      {eggShown > 0 && (
+        <>
+          <h2 class="group-heading">Easter Egg</h2>
+          <div class="two-col">
+            <div class="card">
+              <div class="egg-stats">
+                <div class="egg-stat">
+                  <div class="stat-value">{fmtNum(eggShown)}</div>
+                  <div class="stat-label">Cards shown</div>
+                </div>
+                <div class="egg-stat">
+                  <div class="stat-value">{fmtNum(eggDismissed)}</div>
+                  <div class="stat-label">Dismissed</div>
+                  {eggShown > 0 && (
+                    <div class="stat-sub">{Math.round((eggDismissed / eggShown) * 100)}% dismiss rate</div>
+                  )}
+                </div>
+              </div>
+            </div>
+            {eggTriggers.length > 0 && (
+              <div class="card">
+                <h2 class="section-title">Top triggers</h2>
+                <div class="bar-table">
+                  {eggTriggers.map(t => (
+                    <div class="bar-row">
+                      <span class="bar-row-label">{EGG_TRIGGER_LABELS[t.name] ?? t.name}</span>
+                      <div class="country-bar-wrap bar-row-bar">
+                        <div class="country-bar" style={`width:${((t.count / eggTriggers[0]!.count) * 100).toFixed(1)}%`}></div>
+                      </div>
+                      <span class="bar-row-num">{fmtNum(t.count)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
       <!-- Recent visitors feed -->
       <div class="card">
-        <div class="feed-header">
           <h2 class="section-title" style="margin:0">Recent visitors</h2>
           <span class="feed-live" id="feed-dot" title="Auto-refreshes every 30s"></span>
         </div>
@@ -1936,6 +2000,18 @@ const perPageScroll = scrollPages.map((pg, i) => ({
     font-size: 0.875rem;
     text-align: center;
     padding: 1.5rem 0;
+  }
+
+  /* ── Easter egg stats ─────────────────────────────────────────────────── */
+  .egg-stats {
+    display: flex;
+    gap: 2rem;
+  }
+
+  .egg-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
   }
 
   /* ── Three-column grid (UTM panels) ───────────────────────────────────── */
