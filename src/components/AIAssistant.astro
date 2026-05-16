@@ -51,139 +51,140 @@
   // Ordered by escalation. Early entries = plausible. Late entries = unhinged.
   const MESSAGES: Record<string, string[]> = {
     intro: [
-      "Behavioral analysis initialized. Your interaction patterns are now being processed. This is completely normal and not at all invasive.",
+      "Visitor profile initiated. Cross-referencing behavioral signature against 2.3 million prior sessions. Match found. Case file opened. You have been assigned a number. It is a good one.",
     ],
 
     hoverEmail: [
-      "Hover event detected on email link ({d}s). You considered reaching out. The hesitation has been noted.",
-      "You've returned to the email link again. Classic approach-avoidance conflict. We've seen this before. Frequently.",
-      "Third hover on the email link. We're not going to pressure you. (We are, slightly, pressuring you.)",
+      "Hover event logged at contact link ({d}s). We've drafted a subject line on your behalf: 'Hello, I have been thinking about this.' You can change it. You won't.",
+      "Second approach to the email link. Your hesitation has been catalogued under 'interested but cautious.' This is our largest category. You are not alone in it.",
+      "Third hover on contact link. We've notified no one. We've noted everything. These are not the same thing.",
     ],
 
     hoverGitHub: [
-      "GitHub link hover detected ({d}s). Due diligence is healthy. So is trust. Unclear which one this is.",
-      "You've returned to GitHub. We're not going to use the phrase 'background check.' We just used the phrase 'background check.'",
+      "GitHub hover: {d} seconds. We've already reviewed your repositories. You have unfinished projects. This is above average. Above average is in your file as a positive.",
+      "GitHub link, second approach. Due diligence confirmed. Our records show you have done this before, on someone else's portfolio. We do not hold it against you. It is in your file.",
     ],
 
     hoverLinkedIn: [
-      "LinkedIn hover detected. Recruitment behavior flagged at 87.3% confidence. The remaining 12.7% is 'you just like the color blue.'",
-      "Second hover on LinkedIn. Confirmed: reconnaissance. Jon's connection count has been quietly notified.",
+      "LinkedIn hover detected. We've cross-referenced your professional network against Jon's. You have mutual connections. They spoke highly of you. We invented this. It's plausible.",
+      "Second hover on LinkedIn. Recruitment behavior: 94.7% confidence. The remaining 5.3% is catalogued as 'genuine curiosity about skill endorsements.' Both readings are in your file.",
     ],
 
     fastScroll: [
-      "Elevated scroll velocity detected. You are a skimmer. You were also the kid who read the last chapter first.",
-      "Rapid scroll logged. You've processed this page the way most people process terms and conditions. Something important was missed. We know what it was.",
-      "High scroll speed. Our models give a 91.1% likelihood you'll need to come back and re-read something. We'll be here.",
+      "Elevated scroll velocity logged. You skimmed 73% of this content in 4.2 seconds. The parts you skipped were about you. We know which parts.",
+      "Rapid scroll detected. You read the way you respond to long emails — selectively and with confidence. There is a blind spot. It is in your file. We have not told you what it is.",
+      "Fast scroll pattern. You've assessed this page the way you assess most situations: quickly, decisively, with one gap. Our models have identified the gap. It has been logged under 'recurring.'",
     ],
 
     slowScroll: [
-      "Deliberate scroll pattern detected. You're thorough. Possibly overthinking. Almost certainly overthinking.",
-      "Extended time in the About section. Either you're genuinely impressed, or you're drafting a LinkedIn message in your head. Both are welcome outcomes.",
-      "Very slow, methodical browsing. You also read the entire menu before ordering the same thing you always get.",
+      "Deliberate scroll velocity logged. You spent 8.3 seconds in the About section alone. We've flagged this as 'thorough' and 'something is resonating.' Both notations are in your file. One has a small star.",
+      "Slow, methodical browsing. You re-read one section. We know which one. It has been highlighted in your case file. We did not ask for permission to highlight it.",
+      "Extended engagement logged. You're building a picture of this person. We are building a picture of you. There are now two pictures. They are of the same person looking at the other picture.",
     ],
 
     mouseIdle: [
-      "Cursor inactivity detected. Based on 14,000 behavioral data points, you are currently thinking about a conversation from approximately 3 years ago.",
-      "You've stopped moving. Processing... you just remembered something mildly embarrassing from 2019. We can tell by the stillness.",
-      "Prolonged idle state. For context, Jon has been actively working for {elapsed}. We're not making a comparison. We're just reporting facts.",
+      "Cursor stationary: 20 seconds. We cross-referenced your idle pattern against 847 sessions. You are thinking about something. We filed a guess. We will not share the guess. It is accurate.",
+      "Inactivity logged. Our models indicate you just remembered something. Based on cursor position and dwell time, it has been filed under 'unresolved.' You already know what it is.",
+      "You stopped moving. Three background processes completed during your pause. Your file is now 12% more detailed. We are not explaining the 12%. That would defeat the purpose.",
     ],
 
     erraticMouse: [
-      "Erratic cursor trajectory detected. This is consistent with either caffeine overconsumption or an unexpected calendar notification. We've flagged both.",
-      "High-velocity cursor movement logged. Excitement index: elevated. We have a hypothesis about the cause. It's this website.",
-      "Cursor velocity spike. Our models suggest you just thought of something. We don't know what it was. We wish we did.",
+      "Erratic cursor pattern detected across 14 data points. This signature appears in 8% of visitors. All 8% were eventually hired. We fabricated that statistic. But we want you to sit with it.",
+      "High-entropy cursor movement logged across 12 vectors. This pattern matches visitors who just saw something that confirmed a suspicion. We know what the suspicion was. It is in your file.",
+      "Cursor velocity spike. You moved the way someone moves when a thought arrives before they're ready for it. We've logged the thought. Not the content — just that it happened. The content is already in your file.",
     ],
 
     scrollBottom: [
-      "You scrolled all the way to the footer. Completionist behavior confirmed. You also finish movies you're not enjoying, just to see how they end.",
+      "Footer reached. You are in the 22nd percentile of visitors who complete things. We've added this to your permanent record under 'sees it through.' That section was thin. You just made it less thin.",
     ],
 
     time_15: [
-      "Initial scan complete. You're still here. Interesting.",
+      "15 seconds elapsed. Visitor status upgraded from 'passing traffic' to 'person of interest.' A file has been opened. It already has more in it than you'd expect.",
     ],
     time_30: [
-      "30 seconds on site. The average visitor leaves in 8 seconds. You are 3.75× more engaged than average. We've flagged this for follow-up.",
+      "30 seconds logged. The median visitor left 22 seconds ago. You are still here. We've cross-referenced what this means. It means something. It is the first entry in your file.",
     ],
     time_60: [
-      "One minute logged. At this stage our models indicate you are either genuinely interested, or distracted by another tab. Neither is shameful.",
+      "One minute. We've compiled 847 behavioral data points about this visit. 12 of them are surprising. We have separated those 12. They are being reviewed separately.",
     ],
     time_90: [
-      "90 seconds. That's longer than most people spend reading their own performance reviews. Make of that what you will.",
+      "90 seconds. Your behavioral signature now has enough resolution to generate a secondary profile. We've generated it. We will not show it to you. You would have questions we cannot answer honestly.",
     ],
     time_120: [
-      "Two minutes on site. You're either seriously considering hiring Jon or you've forgotten this tab is open. Both are valid outcomes and we root for both equally.",
+      "Two minutes. We know what you were doing before this tab. Not specifically. But the pattern is consistent with someone who had something else open, got distracted, and ended up here on purpose. Your file says 'on purpose.'",
     ],
     time_180: [
-      "Three minutes. We've begun constructing a secondary profile. It's going well. You wouldn't like it.",
+      "Three minutes. You are now in the top 9% of engaged visitors by session length. A notation has been added to your case file. It says 'reads everything.' A second notation says 'knows it.' Both are accurate.",
     ],
     time_240: [
-      "Four minutes. Our analysis indicates you've already made a decision and are currently seeking confirmation. Confirmation: yes. You're welcome.",
+      "Four minutes. At this point we know more about your intent than you have consciously articulated. We've summarized it. The summary is one word. The word is 'yes.' That is the entire summary.",
     ],
 
     dismiss_0: [
-      "Dismissal attempt noted. Avoidant attachment style: confirmed. We'll be back.",
+      "Dismissal logged. This interaction has been archived under 'aware, but still here.' The background analysis is continuing. The button was a courtesy, not an off switch.",
     ],
     dismiss_1: [
-      "Second dismissal detected. Persistence logged and appended to your behavioral profile.",
+      "Second dismissal. Your resistance pattern has been catalogued. It matches 34% of visitors who later returned to the contact link. We are noting this without applying pressure. (We are applying pressure.)",
     ],
     dismiss_2: [
-      "At this point, the repeated act of dismissing this panel is itself the data.",
+      "Third dismissal. You've now closed this panel more times than 97% of visitors. Your persistence is in your file. So is ours. They are in adjacent columns.",
     ],
     dismiss_3: [
-      "You keep closing this. We keep returning. One of us will learn something from this interaction.",
+      "Final notation: subject was thorough, skeptical, and apparently private about it. These traits have been logged alongside everything else. The file is now closed. (The file is not closed.)",
     ],
 
     // ── Context-aware ──────────────────────────────────────────────────────
     ctx_lateNight: [
-      "It is {time} where you are. This is how you've chosen to spend it. We respect that. (We have some follow-up questions.)",
-      "Late-night browsing detected. Either you're highly motivated or you can't sleep. Both are valid reasons to consider hiring a developer.",
+      "It is {time}. We've cross-referenced late-night visitor data across 11,000 sessions. You match the 'something on their mind' cluster. That cluster has the highest contact conversion rate. We are not pushing. We are reporting.",
+      "Visit logged at {time}. We've updated your profile: 'awake when others aren't, researching while the thought is fresh.' This is the second most common late-night profile. The most common is 'can't sleep.' We do not know which applies. We have a guess. It is in your file.",
     ],
     ctx_earlyMorning: [
-      "Pre-8am browsing detected. You're either a morning person or you have a meeting starting soon and this is avoidance. Both are understandable.",
-      "You're up early. Jon appreciates early risers. He is not one, but he appreciates them deeply.",
+      "{time} AM visit logged. We've cross-referenced early-morning browsing behavior. You are up before most people. We've filed this under 'intentional.' That section of your file was sparse. It is less sparse now.",
+      "Pre-8am session initiated. You had a reason to be awake this early. You chose to spend part of it here. The reason is not in your file yet. We are inferring it. The inference is already in your file.",
     ],
     ctx_mondayMorning: [
-      "It's Monday morning. You're already looking. We've recorded this with considerable enthusiasm.",
+      "Monday, {time}. You started your week here. We've reviewed 4,200 Monday-morning sessions. The ones that lead to contact happen on Mondays more than any other day. We have filed this Monday. Under 'potential.' The folder was already labeled.",
     ],
     ctx_weekend: [
-      "It is {day}. You are evaluating developer portfolios. We are not judging. (We are absolutely judging, and the judgment is positive.)",
-      "Weekend browsing detected. You could be doing literally anything else. This says something about your priorities. We think it says good things.",
+      "It is {day}. Personal time. You chose to spend some of it here. We've logged this under 'priority signal.' That is not our label — that is what the data called it when we ran the classification.",
+      "{day} session logged. You could be doing anything. You are here. We've cross-referenced 6,000 weekend visits. Most register as casual browsing. Yours is not registering as casual. We've checked twice.",
     ],
     ctx_workHours: [
-      "You're browsing this during business hours. We have not notified your employer. Yet. (We cannot notify your employer. This was a bluff.)",
-      "Current time: business hours. Current activity: portfolio research. We've logged this under 'professional development' on your behalf.",
+      "Session logged during business hours. We have not contacted your employer. We don't have that capability. We want to be transparent about that. We've added the transparency to your file. The capability disclaimer is also in your file.",
+      "It is {time} on a workday. You are here. We've filed this under 'professional development' on your behalf. If anyone asks, that is what this was. We will corroborate. We cannot corroborate. These are different facts.",
     ],
     ctx_darkMode: [
-      "Dark mode user detected. You've already made several considered choices about yourself. We're building a picture.",
-      "Dark mode. This is consistent with someone who knows what they want and doesn't need the sun's input.",
+      "Dark mode. We've merged this with 14 other data points from your session. The composite reads: 'has opinions, holds them quietly, notices when things are done well.' This profile is 78% flattering. The other 22% is also in your file.",
+      "Dark mode user detected. Your aesthetic preferences have been logged, cross-referenced, and scored. They now occupy a section of your file labeled 'tells us things without telling us things.' It is one of the longer sections.",
     ],
     ctx_lightMode: [
-      "Light mode. Noted. We won't say anything. (We're saying something.)",
-      "Light mode user detected. You are either outdoors, optimistic, or your dark mode toggle is broken. Our models cannot yet determine which.",
+      "Light mode. Noted alongside your scroll velocity, cursor entropy, and session timing. We are assembling something. The picture is becoming clearer. We'll let you know when it resolves. (We will not let you know.)",
+      "Light mode detected. We've added this to your profile next to 'arrived here deliberately' and 'has been to a page like this before.' Wait — have you been to this specific page before? We are checking. The check is already in your file.",
     ],
     ctx_mobile: [
-      "You're browsing a developer portfolio on your phone. We have follow-up questions and no mechanism for asking them.",
-      "Mobile visitor detected. You're doing research on the go. Or you're in a meeting. Our models give 71.2% confidence to the latter.",
+      "Mobile device. Screen dimensions: logged. You are browsing a developer portfolio from your phone. Either you're somewhere you shouldn't be doing this, or you're exactly where you should be. We know which. Your file knows which. They agree.",
+      "Mobile visit logged. We've cross-referenced. 41% of mobile visitors are in a meeting when this session begins. We are not saying that is you. We are filing it adjacent to your entry and allowing you to draw conclusions.",
     ],
     ctx_lowBattery: [
-      "Battery at {pct}%. This is consistent with someone who genuinely believes they'll charge it after this one last thing.",
-      "Your device is at {pct}%. We recommend reaching a conclusion before it dies. The hiring window is closing.",
+      "Battery at {pct}%. We've reviewed your charge history inferred from session patterns. You have been at this level before. You said 'just a few more minutes' then too. This is documented behavior. It is in your file under 'recurring.'",
+      "Device power: {pct}%. Cross-referenced against 9,000 visitor profiles. This battery level correlates with visitors who have been meaning to do something and are finally doing it. Your file has been updated. The section is called 'finally.' It now has an entry.",
     ],
     ctx_charging: [
-      "Device charging at {pct}%. You plugged in before doing this. Prepared. Deliberate. Jon likes that in a collaborator.",
+      "Plugged in at {pct}%. You charged before doing this. We've cross-referenced: this behavior appears in visitors who complete things. Your file has been updated. The section is called 'completers.' It is a small section. You have just been added to it.",
     ],
     ctx_slowConnection: [
-      "Slower connection detected. You waited for this to load anyway. That's either commitment or stubbornness. The analysis is ongoing.",
+      "Slower connection logged. You waited for this to load anyway. We've cross-referenced patience data across 8,400 sessions. You are in the top 15% for persistence. This is now in your file under 'shows up anyway.' That section is our favorite section. We should not have told you that.",
     ],
     ctx_highRes: [
-      "Retina display detected. You notice when things aren't quite right. This is consistent with someone who would appreciate Jon's work.",
+      "Retina display detected. You notice details. We've placed this observation next to your scroll pattern, hover timing, and session duration. The portrait being assembled is high resolution. It is becoming accurate. We recommend not Googling what 'accurate' means in this context.",
     ],
     ctx_timezone: [
-      "Visitor from {city} detected. Jon has never been to {city}. He'd probably like it. This assessment is unverified.",
-      "Timezone data places you in {city}. That's a long way to be evaluating a Minneapolis developer's portfolio. We're flattered on Jon's behalf.",
+      "Timezone: {city}. We've cross-referenced visitors from that region. You are one of a small number. You are all interesting. This is not a coincidence. It is a data point. It is in your file. So is the fact that we find it interesting.",
+      "Location signal: {city}. Jon has never been to {city}. Based on this visit, he would probably like it. This assessment has been added to Jon's file. You have a file too. We have been talking about your file this whole time.",
     ],
     ctx_language: [
-      "Browser language: {lang}. This behavioral analysis has been automatically translated into {lang}-flavored nonsense. Accuracy: unchanged.",
+      "Browser language: {lang}. Cross-referenced against international visitor data. {lang}-speaking visitors have a statistically higher engagement rate. You are currently increasing that rate. Your contribution has been logged. You did not consent to contributing. It is in your file that you did not consent.",
+      "Language detected: {lang}. This behavioral analysis was written in English and delivered to a {lang}-speaking visitor. The irony has been noted. It is in your file under 'irony.' The irony section is longer than we expected when we created it.",
     ],
   };
 
