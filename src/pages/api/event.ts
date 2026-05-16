@@ -84,8 +84,7 @@ export const POST: APIRoute = async ({ request }) => {
       'time_15', 'time_30', 'time_60', 'time_90', 'time_120', 'time_180', 'time_240',
       'ctx_lateNight', 'ctx_earlyMorning', 'ctx_mondayMorning', 'ctx_weekend', 'ctx_workHours',
       'ctx_darkMode', 'ctx_lightMode', 'ctx_mobile', 'ctx_lowBattery', 'ctx_charging',
-      'ctx_slowConnection', 'ctx_highRes', 'ctx_timezone', 'ctx_language',
-    ]);
+      'ctx_slowConnection', 'ctx_highRes', 'ctx_timezone', 'ctx_language',        'devtools',    ]);
     if (!ALLOWED.has(value)) return new Response(null, { status: 204 });
     if (value === 'shown') {
       pipeline.push(['INCR', 'easter_egg:shown']);

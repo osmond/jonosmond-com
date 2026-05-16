@@ -133,6 +133,12 @@
       "Final notation: subject was thorough, skeptical, and apparently private about it. These traits have been logged alongside everything else. The file is now closed. (The file is not closed.)",
     ],
 
+    devtools: [
+      "DevTools opened. Your inspection has been logged. Everything you find in there is intentional. Most of it.",
+      "Developer tools detected. We've noted the curiosity about the implementation. It is now in your file under 'checks the work.' That is a compliment. It is also a data point.",
+      "DevTools opened mid-session. We appreciate due diligence. The source code has been reviewed by us as well. We had notes. They are not in the source code. They are in your file.",
+    ],
+
     // ── Context-aware ──────────────────────────────────────────────────────
     ctx_lateNight: [
       "It is {time}. We've cross-referenced late-night visitor data across 11,000 sessions. You match the 'something on their mind' cluster. That cluster has the highest contact conversion rate. We are not pushing. We are reporting.",
@@ -206,6 +212,7 @@
     'ctx_lateNight', 'ctx_earlyMorning', 'ctx_mondayMorning', 'ctx_weekend', 'ctx_workHours',
     'ctx_darkMode', 'ctx_lightMode', 'ctx_mobile', 'ctx_lowBattery', 'ctx_charging',
     'ctx_slowConnection', 'ctx_highRes', 'ctx_timezone', 'ctx_language',
+    'devtools',
   ]);
 
   function track(value: string) {
@@ -390,6 +397,22 @@
       window.setTimeout(() => enqueue(c.type, c.vars), (22 + i * 30) * 1000);
     });
   })();
+
+  // ── DevTools detection ─────────────────────────────────────────────────
+  let devtoolsFired = false;
+  const DEVTOOLS_THRESHOLD = 160;
+  function checkDevTools() {
+    if (devtoolsFired) return;
+    if (
+      window.outerWidth  - window.innerWidth  > DEVTOOLS_THRESHOLD ||
+      window.outerHeight - window.innerHeight > DEVTOOLS_THRESHOLD
+    ) {
+      devtoolsFired = true;
+      enqueue('devtools');
+    }
+  }
+  window.addEventListener('resize', checkDevTools);
+  window.setTimeout(checkDevTools, 1500); // catch devtools already open on load
 
   // ── Time milestones ───────────────────────────────────────────────────────
   ([15, 30, 60, 90, 120, 180, 240] as const).forEach(s => {
