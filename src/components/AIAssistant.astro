@@ -478,9 +478,11 @@
     // Shift card above footer when near the bottom of the page
     const aiEl = document.getElementById('ai-assistant');
     if (aiEl) {
+      // Use documentElement for iOS Safari accuracy (window.innerHeight fluctuates with URL bar)
       const footer = document.querySelector('footer');
       const footerH = footer ? footer.getBoundingClientRect().height : 64;
-      const distFromBottom = document.documentElement.scrollHeight - (window.scrollY + window.innerHeight);
+      const viewH = window.visualViewport?.height ?? window.innerHeight;
+      const distFromBottom = document.documentElement.scrollHeight - (window.scrollY + viewH);
       if (distFromBottom < footerH + 24) {
         aiEl.classList.add('ai--above-footer');
         aiEl.style.setProperty('--footer-offset', `${footerH + 16}px`);
