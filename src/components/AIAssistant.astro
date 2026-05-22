@@ -474,6 +474,20 @@
         enqueue('scrollBottom');
       }
     }
+
+    // Shift card above footer when near the bottom of the page
+    const aiEl = document.getElementById('ai-assistant');
+    if (aiEl) {
+      const footer = document.querySelector('footer');
+      const footerH = footer ? footer.getBoundingClientRect().height : 64;
+      const distFromBottom = document.documentElement.scrollHeight - (window.scrollY + window.innerHeight);
+      if (distFromBottom < footerH + 24) {
+        aiEl.classList.add('ai--above-footer');
+        aiEl.style.setProperty('--footer-offset', `${footerH + 16}px`);
+      } else {
+        aiEl.classList.remove('ai--above-footer');
+      }
+    }
   };
 
   window.addEventListener('scroll', onScroll, { passive: true });
@@ -544,7 +558,7 @@
     pointer-events: none;
     opacity: 0;
     transform: translateY(10px);
-    transition: opacity 0.5s ease, transform 0.5s ease;
+    transition: opacity 0.5s ease, transform 0.5s ease, bottom 0.3s ease;
   }
 
   .ai--visible {
@@ -675,6 +689,12 @@
   .ai__dismiss:hover {
     color: var(--color-text);
     background: var(--color-border);
+  }
+
+  /* ── Above-footer shift ────────────────────────────────────────────────── */
+  .ai--above-footer {
+    bottom: var(--footer-offset, 5rem);
+    transition: bottom 0.3s ease, opacity 0.5s ease, transform 0.5s ease;
   }
 
   /* ── Mobile: nudge slightly off edge ────────────────────────────────────── */
