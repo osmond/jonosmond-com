@@ -1,0 +1,466 @@
+---
+export const prerender = false;
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout
+  title="Signal — Jon Osmond"
+  description="Real-time activity on jonosmond.com — pageviews, events, and visitor patterns as they happen."
+>
+  <div class="signal-page">
+    <nav class="signal-nav" aria-label="Page navigation">
+      <a href="/experiments" class="signal-nav__back">
+        <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M10 3L5 8l5 5" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        Experiments
+      </a>
+      <span class="signal-nav__title">Signal</span>
+      <span class="signal-nav__live" aria-label="Live data" title="Updating every 5 seconds">
+        <span class="live-dot" aria-hidden="true"></span>
+        Live
+      </span>
+    </nav>
+
+    <main class="signal-main">
+      <!-- Stats row -->
+      <div class="signal-stats" role="region" aria-label="Today's stats" aria-live="polite">
+        <div class="signal-stat">
+          <span class="signal-stat__value" id="stat-pv" aria-label="Pageviews today">—</span>
+          <span class="signal-stat__label">Pageviews today</span>
+        </div>
+        <div class="signal-stat">
+          <span class="signal-stat__value" id="stat-uv" aria-label="Unique visitors today">—</span>
+          <span class="signal-stat__label">Unique visitors</span>
+        </div>
+        <div class="signal-stat signal-stat--wide" id="stat-top-pages" aria-label="Top pages">
+          <span class="signal-stat__label">Top pages</span>
+          <ul class="signal-top-pages" id="top-pages-list" aria-label="Top pages list"></ul>
+        </div>
+      </div>
+
+      <!-- Event stream -->
+      <div class="signal-stream-wrap">
+        <h2 class="signal-stream-heading">Recent Activity</h2>
+        <ul class="signal-stream" id="signal-stream" aria-label="Recent site events" aria-live="polite" aria-atomic="false">
+          <li class="signal-stream__empty" id="stream-empty">Loading…</li>
+        </ul>
+      </div>
+    </main>
+  </div>
+</Layout>
+
+<script>
+  interface LiveData {
+    pvToday: number;
+    uvToday: number;
+    topPages: Array<{ page: string; count: number }>;
+  }
+
+  interface RecentEvent {
+    ts?: string;
+    page?: string;
+    country?: string;
+    city?: string;
+    referrer?: string;
+    device?: string;
+    utm?: string;
+  }
+
+  // ─── Counter animation ────────────────────────────────────────────────────
+  function animateCounter(el: HTMLElement, from: number, to: number) {
+    const duration = 600;
+    const start = performance.now();
+    function step(now: number) {
+      const p = Math.min((now - start) / duration, 1);
+      const eased = 1 - Math.pow(1 - p, 3);
+      el.textContent = String(Math.round(from + (to - from) * eased));
+      if (p < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+
+  let lastPv = 0;
+  let lastUv = 0;
+  let knownTimestamps = new Set<string>();
+
+  // ─── Update live stats ────────────────────────────────────────────────────
+  async function fetchLive() {
+    try {
+      const res = await fetch('/api/live');
+      if (!res.ok) return;
+      const data = (await res.json()) as LiveData;
+
+      const pvEl = document.getElementById('stat-pv');
+      const uvEl = document.getElementById('stat-uv');
+
+      if (pvEl) {
+        if (data.pvToday !== lastPv) {
+          pvEl.classList.add('is-updated');
+          setTimeout(() => pvEl.classList.remove('is-updated'), 800);
+          animateCounter(pvEl, lastPv, data.pvToday);
+          lastPv = data.pvToday;
+        }
+      }
+
+      if (uvEl) {
+        if (data.uvToday !== lastUv) {
+          uvEl.classList.add('is-updated');
+          setTimeout(() => uvEl.classList.remove('is-updated'), 800);
+          animateCounter(uvEl, lastUv, data.uvToday);
+          lastUv = data.uvToday;
+        }
+      }
+
+      // Top pages bar list
+      const list = document.getElementById('top-pages-list');
+      if (list && data.topPages.length > 0) {
+        const max = data.topPages[0]?.count ?? 1;
+        list.innerHTML = data.topPages
+          .slice(0, 5)
+          .map(({ page, count }) => {
+            const pct = Math.round((count / max) * 100);
+            const label = page === '/' ? 'Home' : page.replace(/^\//, '');
+            return `<li class="top-page">
+              <span class="top-page__name">${label}</span>
+              <span class="top-page__bar" style="--pct:${pct}%"></span>
+              <span class="top-page__count">${count}</span>
+            </li>`;
+          })
+          .join('');
+      }
+    } catch { /* graceful degradation */ }
+  }
+
+  // ─── Update event stream ──────────────────────────────────────────────────
+  const DEVICE_ICONS: Record<string, string> = {
+    Mobile:  '📱',
+    Tablet:  '⬜',
+    Desktop: '🖥',
+  };
+  const FLAG_MAP: Record<string, string> = {
+    US: '🇺🇸', GB: '🇬🇧', CA: '🇨🇦', DE: '🇩🇪', FR: '🇫🇷',
+    AU: '🇦🇺', JP: '🇯🇵', IN: '🇮🇳', BR: '🇧🇷', NL: '🇳🇱',
+  };
+
+  function relTime(iso: string): string {
+    const diff = Math.round((Date.now() - new Date(iso).getTime()) / 1000);
+    if (diff < 60)    return `${diff}s ago`;
+    if (diff < 3600)  return `${Math.floor(diff / 60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+    return `${Math.floor(diff / 86400)}d ago`;
+  }
+
+  async function fetchEvents() {
+    try {
+      const res = await fetch('/api/recent');
+      if (!res.ok) return;
+      const events = (await res.json()) as RecentEvent[];
+
+      const stream = document.getElementById('signal-stream');
+      if (!stream) return;
+
+      const newEvents = events.filter(e => e.ts && !knownTimestamps.has(e.ts));
+      if (newEvents.length === 0) {
+        // Just update relative timestamps
+        stream.querySelectorAll<HTMLElement>('[data-ts]').forEach(el => {
+          const ts = el.dataset.ts!;
+          el.textContent = relTime(ts);
+        });
+        return;
+      }
+
+      // Remove "Loading..." placeholder
+      document.getElementById('stream-empty')?.remove();
+
+      for (const e of newEvents.slice(0, 20)) {
+        if (!e.ts) continue;
+        knownTimestamps.add(e.ts);
+
+        const li = document.createElement('li');
+        li.className = 'signal-event signal-event--new';
+        li.setAttribute('aria-label', `Visit to ${e.page ?? '/'}`);
+
+        const flag = e.country ? (FLAG_MAP[e.country] ?? e.country) : '';
+        const icon = DEVICE_ICONS[e.device ?? ''] ?? '🖥';
+        const pageLabel = (e.page === '/' ? 'Home' : e.page ?? '/');
+        const refLabel  = e.referrer && e.referrer !== 'Direct' ? ` via ${e.referrer}` : '';
+
+        li.innerHTML = `
+          <span class="se-icon" aria-hidden="true">${flag || icon}</span>
+          <span class="se-body">
+            <span class="se-page">${pageLabel}</span>
+            <span class="se-meta">${e.city ? `${e.city}` : ''}${refLabel}</span>
+          </span>
+          <span class="se-time" data-ts="${e.ts}">${relTime(e.ts)}</span>
+        `;
+
+        stream.prepend(li);
+        // Trigger animation
+        requestAnimationFrame(() => li.classList.remove('signal-event--new'));
+
+        // Cap stream length
+        if (stream.children.length > 25) {
+          stream.lastElementChild?.remove();
+        }
+      }
+    } catch { /* graceful */ }
+  }
+
+  // ─── Boot ─────────────────────────────────────────────────────────────────
+  fetchLive();
+  fetchEvents();
+
+  const liveId  = setInterval(fetchLive, 10_000);
+  const eventsId = setInterval(fetchEvents, 5_000);
+
+  document.addEventListener('astro:before-swap', () => {
+    clearInterval(liveId);
+    clearInterval(eventsId);
+  }, { once: true });
+</script>
+
+<style>
+  .signal-page {
+    min-height: 100svh;
+    background: var(--color-bg);
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Nav ── */
+  .signal-nav {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.25rem 1.5rem;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .signal-nav__back {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.8125rem;
+    color: var(--color-muted);
+    text-decoration: none;
+    transition: color 0.2s;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    padding: 0.35rem 0.7rem;
+  }
+  .signal-nav__back:hover { color: var(--color-text); border-color: var(--color-border-highlight); }
+  .signal-nav__back svg { width: 13px; height: 13px; }
+
+  .signal-nav__title {
+    font-size: 0.875rem;
+    color: var(--color-text);
+    flex: 1;
+  }
+
+  .signal-nav__live {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.75rem;
+    color: var(--color-muted);
+  }
+
+  .live-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #4ade80;
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.4; }
+  }
+
+  /* ── Main ── */
+  .signal-main {
+    flex: 1;
+    padding: clamp(1.5rem, 4vw, 2.5rem);
+    max-width: 72rem;
+    width: 100%;
+    display: grid;
+    grid-template-rows: auto 1fr;
+    gap: 2rem;
+  }
+
+  /* ── Stats ── */
+  .signal-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr auto;
+    gap: 1rem;
+    align-items: start;
+  }
+
+  @media (max-width: 640px) {
+    .signal-stats { grid-template-columns: 1fr 1fr; }
+    .signal-stat--wide { grid-column: 1 / -1; }
+  }
+
+  .signal-stat {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    padding: 1rem 1.25rem;
+  }
+
+  .signal-stat--wide {
+    min-width: 200px;
+  }
+
+  .signal-stat__value {
+    display: block;
+    font-family: var(--font-display);
+    font-size: 2.25rem;
+    color: var(--color-text);
+    line-height: 1;
+    margin-bottom: 0.35rem;
+    transition: color 0.3s;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .signal-stat__value.is-updated {
+    color: var(--color-accent);
+  }
+
+  .signal-stat__label {
+    font-size: 0.75rem;
+    color: var(--color-muted);
+    font-weight: 500;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  /* ── Top pages ── */
+  .signal-top-pages {
+    list-style: none;
+    margin: 0.6rem 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+
+  .top-page {
+    display: grid;
+    grid-template-columns: 5rem 1fr auto;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.8rem;
+  }
+
+  .top-page__name {
+    color: var(--color-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .top-page__bar {
+    height: 3px;
+    background: var(--color-accent);
+    border-radius: 2px;
+    width: var(--pct, 0%);
+    opacity: 0.6;
+    transition: width 0.6s ease;
+  }
+
+  .top-page__count {
+    font-size: 0.75rem;
+    color: var(--color-muted);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+
+  /* ── Stream ── */
+  .signal-stream-wrap {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  .signal-stream-heading {
+    font-family: var(--font-body);
+    font-size: 0.75rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-muted);
+    margin: 0 0 0.875rem;
+  }
+
+  .signal-stream {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .signal-stream__empty {
+    font-size: 0.875rem;
+    color: var(--color-muted);
+    padding: 1rem 0;
+  }
+
+  .signal-event {
+    display: grid;
+    grid-template-columns: 1.75rem 1fr auto;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.625rem 0;
+    border-bottom: 1px solid var(--color-border);
+    transition: opacity 0.4s, transform 0.4s;
+  }
+
+  .signal-event--new {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+
+  .signal-event:last-child { border-bottom: none; }
+
+  .se-icon {
+    font-size: 0.9rem;
+    line-height: 1;
+    text-align: center;
+  }
+
+  .se-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    min-width: 0;
+  }
+
+  .se-page {
+    font-size: 0.875rem;
+    color: var(--color-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .se-meta {
+    font-size: 0.75rem;
+    color: var(--color-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .se-time {
+    font-size: 0.75rem;
+    color: var(--color-muted);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+</style>

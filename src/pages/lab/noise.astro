@@ -1,0 +1,247 @@
+---
+export const prerender = true;
+import Layout from '../../layouts/Layout.astro';
+---
+
+<Layout title="Noise Field — Lab — Jon Osmond" description="Particles flowing through an animated Perlin noise vector field.">
+  <div class="lab-exp">
+    <nav class="lab-exp__nav">
+      <a href="/lab" class="lab-exp__back">
+        <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M10 3L5 8l5 5" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        Lab
+      </a>
+      <span class="lab-exp__name">Noise Field</span>
+    </nav>
+    <canvas id="exp-canvas" aria-label="Perlin noise flow field with animated particles"></canvas>
+    <div class="lab-exp__info" id="exp-info">
+      <strong>Noise Field</strong>
+      Particles following a Perlin noise–based vector field. Move your mouse to shift the flow.
+      <button class="lab-exp__dismiss" id="dismiss-info" aria-label="Dismiss description">✕</button>
+    </div>
+  </div>
+</Layout>
+
+<script>
+  // ─── Tiny permutation-based gradient noise (Perlin-like simplex) ───────────
+  const perm = new Uint8Array(512);
+  const p256 = new Uint8Array(256);
+  for (let i = 0; i < 256; i++) p256[i] = i;
+  for (let i = 255; i > 0; i--) {
+    const j = (Math.random() * (i + 1)) | 0;
+    [p256[i], p256[j]] = [p256[j], p256[i]];
+  }
+  for (let i = 0; i < 512; i++) perm[i] = p256[i & 255];
+
+  function fade(t: number) { return t * t * t * (t * (t * 6 - 15) + 10); }
+  function lerp(a: number, b: number, t: number) { return a + t * (b - a); }
+  function grad(h: number, x: number, y: number): number {
+    const v = h & 3;
+    const u = v < 2 ? x : y;
+    const w = v < 2 ? y : x;
+    return ((h & 1) ? -u : u) + ((h & 2) ? -w : w);
+  }
+
+  function noise(x: number, y: number): number {
+    const xi = Math.floor(x) & 255;
+    const yi = Math.floor(y) & 255;
+    const xf = x - Math.floor(x);
+    const yf = y - Math.floor(y);
+    const u = fade(xf), v = fade(yf);
+    const aa = perm[perm[xi]     + yi],     ab = perm[perm[xi]     + yi + 1];
+    const ba = perm[perm[xi + 1] + yi],     bb = perm[perm[xi + 1] + yi + 1];
+    return lerp(
+      lerp(grad(aa, xf,   yf),   grad(ba, xf-1, yf),   u),
+      lerp(grad(ab, xf,   yf-1), grad(bb, xf-1, yf-1), u),
+      v
+    );
+  }
+
+  // ─── Canvas ────────────────────────────────────────────────────────────────
+  const canvas = document.getElementById('exp-canvas') as HTMLCanvasElement;
+  const ctx    = canvas.getContext('2d')!;
+  const dpr    = Math.min(window.devicePixelRatio || 1, 2);
+  const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const isDark = !window.matchMedia('(prefers-color-scheme: light)').matches;
+
+  let W = 0, H = 0;
+  function resize() {
+    W = canvas.offsetWidth; H = canvas.offsetHeight;
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    ctx.scale(dpr, dpr);
+  }
+  resize();
+  window.addEventListener('resize', resize, { passive: true });
+
+  // ─── Particles ─────────────────────────────────────────────────────────────
+  const COUNT = 600;
+  const particles = Array.from({ length: COUNT }, () => ({
+    x: Math.random() * W,
+    y: Math.random() * H,
+    vx: 0, vy: 0,
+    life: Math.random(),
+  }));
+
+  let mouseX = W / 2, mouseY = H / 2;
+  canvas.addEventListener('mousemove', e => {
+    const r = canvas.getBoundingClientRect();
+    mouseX = (e.clientX - r.left);
+    mouseY = (e.clientY - r.top);
+  });
+
+  // ─── Animation ─────────────────────────────────────────────────────────────
+  let t = 0;
+  let raf = 0;
+
+  function draw() {
+    t += 0.004;
+    const mx = (mouseX / W) * 2 - 1;
+    const my = (mouseY / H) * 2 - 1;
+
+    // Fade trail
+    ctx.fillStyle = isDark ? 'rgba(15,15,15,0.06)' : 'rgba(245,240,232,0.06)';
+    ctx.fillRect(0, 0, W, H);
+
+    for (const p of particles) {
+      const scale = 0.004;
+      const nx = noise(p.x * scale + t + mx * 0.5, p.y * scale + t * 0.6 + my * 0.5);
+      const angle = nx * Math.PI * 4;
+
+      p.vx = p.vx * 0.85 + Math.cos(angle) * 0.55;
+      p.vy = p.vy * 0.85 + Math.sin(angle) * 0.55;
+      p.x += p.vx;
+      p.y += p.vy;
+
+      // Wrap
+      if (p.x < -5)  p.x = W + 5;
+      if (p.x > W+5) p.x = -5;
+      if (p.y < -5)  p.y = H + 5;
+      if (p.y > H+5) p.y = -5;
+
+      p.life = (p.life + 0.003) % 1;
+      const alpha = Math.sin(p.life * Math.PI) * 0.7;
+      const hex = Math.round(alpha * 255).toString(16).padStart(2, '0');
+
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 1, 0, Math.PI * 2);
+      ctx.fillStyle = isDark ? `rgba(196,107,75,${alpha.toFixed(2)})` : `rgba(160,69,37,${alpha.toFixed(2)})`;
+      ctx.fill();
+    }
+
+    raf = requestAnimationFrame(draw);
+  }
+
+  if (prefersReduced) {
+    // Static single frame
+    ctx.fillStyle = isDark ? '#0f0f0f' : '#f5f0e8';
+    ctx.fillRect(0, 0, W, H);
+    for (const p of particles) {
+      ctx.beginPath(); ctx.arc(p.x, p.y, 1, 0, Math.PI * 2);
+      ctx.fillStyle = isDark ? 'rgba(196,107,75,0.5)' : 'rgba(160,69,37,0.4)';
+      ctx.fill();
+    }
+  } else {
+    draw();
+  }
+
+  // ─── Dismiss info ──────────────────────────────────────────────────────────
+  document.getElementById('dismiss-info')?.addEventListener('click', () => {
+    document.getElementById('exp-info')?.remove();
+  });
+
+  // ─── Cleanup ───────────────────────────────────────────────────────────────
+  document.addEventListener('astro:before-swap', () => {
+    cancelAnimationFrame(raf);
+    window.removeEventListener('resize', resize);
+  }, { once: true });
+</script>
+
+<style is:global>
+  html, body { margin: 0; padding: 0; overflow: hidden; }
+</style>
+
+<style>
+  .lab-exp {
+    position: relative;
+    width: 100vw;
+    height: 100svh;
+    overflow: hidden;
+    background: var(--color-bg);
+  }
+
+  #exp-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  .lab-exp__nav {
+    position: absolute;
+    top: 1.25rem;
+    left: 1.25rem;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    gap: 0.875rem;
+  }
+
+  .lab-exp__back {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.8125rem;
+    color: var(--color-muted);
+    text-decoration: none;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    padding: 0.35rem 0.7rem;
+    transition: color 0.2s, border-color 0.2s;
+    backdrop-filter: blur(8px);
+  }
+  .lab-exp__back:hover { color: var(--color-text); border-color: var(--color-border-highlight); }
+  .lab-exp__back svg { width: 13px; height: 13px; }
+
+  .lab-exp__name {
+    font-size: 0.8125rem;
+    color: var(--color-muted);
+  }
+
+  .lab-exp__info {
+    position: absolute;
+    bottom: 1.5rem;
+    left: 1.5rem;
+    right: 1.5rem;
+    max-width: 36rem;
+    font-size: 0.8125rem;
+    color: var(--color-muted);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    padding: 0.75rem 2.5rem 0.75rem 1rem;
+    z-index: 10;
+    line-height: 1.5;
+  }
+
+  .lab-exp__info strong {
+    color: var(--color-text);
+    display: block;
+    margin-bottom: 0.25rem;
+    font-size: 0.875rem;
+  }
+
+  .lab-exp__dismiss {
+    position: absolute;
+    top: 0.6rem;
+    right: 0.75rem;
+    background: none;
+    border: none;
+    color: var(--color-muted);
+    cursor: pointer;
+    font-size: 0.75rem;
+    padding: 0.2rem;
+    transition: color 0.2s;
+  }
+  .lab-exp__dismiss:hover { color: var(--color-text); }
+</style>

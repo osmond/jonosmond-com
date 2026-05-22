@@ -1,0 +1,184 @@
+---
+export const prerender = true;
+import Layout from '../../layouts/Layout.astro';
+---
+
+<Layout title="Cursor Trails — Lab — Jon Osmond" description="Spring-physics cursor trail that follows your mouse with natural damping.">
+  <div class="lab-exp">
+    <nav class="lab-exp__nav">
+      <a href="/lab" class="lab-exp__back">
+        <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M10 3L5 8l5 5" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        Lab
+      </a>
+      <span class="lab-exp__name">Cursor Trails</span>
+    </nav>
+    <canvas id="exp-canvas" aria-label="Spring-physics cursor trail animation"></canvas>
+    <div class="lab-exp__info" id="exp-info">
+      <strong>Cursor Trails</strong>
+      Each segment chases the one before it using spring physics with damping. Move your mouse around the canvas.
+      <button class="lab-exp__dismiss" id="dismiss-info" aria-label="Dismiss description">✕</button>
+    </div>
+  </div>
+</Layout>
+
+<script>
+  const canvas = document.getElementById('exp-canvas') as HTMLCanvasElement;
+  const ctx    = canvas.getContext('2d')!;
+  const dpr    = Math.min(window.devicePixelRatio || 1, 2);
+  const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const isDark = !window.matchMedia('(prefers-color-scheme: light)').matches;
+
+  let W = 0, H = 0;
+  function resize() {
+    W = canvas.offsetWidth; H = canvas.offsetHeight;
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    ctx.scale(dpr, dpr);
+  }
+  resize();
+  window.addEventListener('resize', resize, { passive: true });
+
+  // ─── Spring segments ────────────────────────────────────────────────────────
+  const SEGS = 30;
+  const segs = Array.from({ length: SEGS }, () => ({
+    x: W / 2, y: H / 2, vx: 0, vy: 0,
+  }));
+
+  let mouseX = W / 2, mouseY = H / 2;
+  let hasMoused = false;
+
+  canvas.addEventListener('mousemove', e => {
+    const r = canvas.getBoundingClientRect();
+    mouseX = e.clientX - r.left;
+    mouseY = e.clientY - r.top;
+    hasMoused = true;
+  });
+
+  // Touch
+  canvas.addEventListener('touchmove', e => {
+    e.preventDefault();
+    const r = canvas.getBoundingClientRect();
+    mouseX = e.touches[0].clientX - r.left;
+    mouseY = e.touches[0].clientY - r.top;
+    hasMoused = true;
+  }, { passive: false });
+
+  // ─── Idle orbit (when no mouse) ─────────────────────────────────────────────
+  let t = 0;
+
+  // ─── Draw ───────────────────────────────────────────────────────────────────
+  let raf = 0;
+
+  function draw() {
+    t += 0.025;
+    let targetX = mouseX, targetY = mouseY;
+    if (!hasMoused) {
+      targetX = W * (0.5 + 0.35 * Math.sin(t));
+      targetY = H * (0.5 + 0.28 * Math.cos(t * 0.8));
+    }
+
+    // Fade trail
+    ctx.fillStyle = isDark ? 'rgba(15,15,15,0.15)' : 'rgba(245,240,232,0.15)';
+    ctx.fillRect(0, 0, W, H);
+
+    // Update segments
+    let prevX = targetX, prevY = targetY;
+    for (let i = 0; i < segs.length; i++) {
+      const s = segs[i];
+      const stiff = 0.18 - i * 0.003;
+      s.vx = s.vx * 0.75 + (prevX - s.x) * Math.max(stiff, 0.04);
+      s.vy = s.vy * 0.75 + (prevY - s.y) * Math.max(stiff, 0.04);
+      s.x += s.vx; s.y += s.vy;
+      prevX = s.x; prevY = s.y;
+    }
+
+    // Draw trail as connected line + individual circles
+    const accent = isDark ? [196, 107, 75] : [160, 69, 37];
+
+    ctx.beginPath();
+    ctx.moveTo(targetX, targetY);
+    for (const s of segs) {
+      ctx.lineTo(s.x, s.y);
+    }
+    ctx.strokeStyle = isDark ? 'rgba(196,107,75,0.15)' : 'rgba(160,69,37,0.12)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    for (let i = 0; i < segs.length; i++) {
+      const s = segs[i];
+      const alpha = Math.pow(1 - i / segs.length, 1.5);
+      const radius = 3 + (1 - i / segs.length) * 5;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, radius, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${accent[0]},${accent[1]},${accent[2]},${alpha.toFixed(2)})`;
+      ctx.fill();
+    }
+
+    // Lead cursor dot
+    ctx.beginPath();
+    ctx.arc(targetX, targetY, 5, 0, Math.PI * 2);
+    ctx.fillStyle = isDark ? '#c46b4b' : '#a04525';
+    ctx.fill();
+
+    raf = requestAnimationFrame(draw);
+  }
+
+  if (prefersReduced) {
+    ctx.fillStyle = isDark ? '#0f0f0f' : '#f5f0e8';
+    ctx.fillRect(0, 0, W, H);
+  } else {
+    draw();
+  }
+
+  document.getElementById('dismiss-info')?.addEventListener('click', () => {
+    document.getElementById('exp-info')?.remove();
+  });
+
+  document.addEventListener('astro:before-swap', () => {
+    cancelAnimationFrame(raf);
+    window.removeEventListener('resize', resize);
+  }, { once: true });
+</script>
+
+<style is:global>
+  html, body { margin: 0; padding: 0; overflow: hidden; }
+</style>
+
+<style>
+  .lab-exp {
+    position: relative;
+    width: 100vw;
+    height: 100svh;
+    overflow: hidden;
+    background: var(--color-bg);
+  }
+  #exp-canvas { display: block; width: 100%; height: 100%; cursor: none; }
+  .lab-exp__nav {
+    position: absolute; top: 1.25rem; left: 1.25rem; z-index: 10;
+    display: flex; align-items: center; gap: 0.875rem;
+  }
+  .lab-exp__back {
+    display: inline-flex; align-items: center; gap: 0.35rem;
+    font-size: 0.8125rem; color: var(--color-muted); text-decoration: none;
+    background: var(--color-surface); border: 1px solid var(--color-border);
+    border-radius: 6px; padding: 0.35rem 0.7rem;
+    transition: color 0.2s, border-color 0.2s; backdrop-filter: blur(8px);
+  }
+  .lab-exp__back:hover { color: var(--color-text); border-color: var(--color-border-highlight); }
+  .lab-exp__back svg { width: 13px; height: 13px; }
+  .lab-exp__name { font-size: 0.8125rem; color: var(--color-muted); }
+  .lab-exp__info {
+    position: absolute; bottom: 1.5rem; left: 1.5rem; right: 1.5rem;
+    max-width: 36rem; font-size: 0.8125rem; color: var(--color-muted);
+    background: var(--color-surface); border: 1px solid var(--color-border);
+    border-radius: 8px; padding: 0.75rem 2.5rem 0.75rem 1rem; z-index: 10; line-height: 1.5;
+  }
+  .lab-exp__info strong { color: var(--color-text); display: block; margin-bottom: 0.25rem; font-size: 0.875rem; }
+  .lab-exp__dismiss {
+    position: absolute; top: 0.6rem; right: 0.75rem;
+    background: none; border: none; color: var(--color-muted);
+    cursor: pointer; font-size: 0.75rem; padding: 0.2rem; transition: color 0.2s;
+  }
+  .lab-exp__dismiss:hover { color: var(--color-text); }
+</style>

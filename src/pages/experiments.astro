@@ -1,0 +1,406 @@
+---
+export const prerender = true;
+import Layout from '../layouts/Layout.astro';
+import Footer from '../components/Footer.astro';
+
+const items = [
+  {
+    href: '/graph',
+    tag: 'Network',
+    title: 'Skills Graph',
+    description: 'A force-directed graph of skills, tools, and projects. Drag nodes, zoom in, hover to trace connections.',
+    preview: 'graph',
+  },
+  {
+    href: '/signal',
+    tag: 'Live',
+    title: 'Signal',
+    description: 'Real-time activity on this site — pageviews, visitor events, and patterns as they happen.',
+    preview: 'signal',
+  },
+  {
+    href: '/ambient',
+    tag: 'Display',
+    title: 'Ambient',
+    description: 'A living screensaver — current time, music playing, and Minneapolis weather in one calm view.',
+    preview: 'ambient',
+  },
+  {
+    href: '/lab',
+    tag: 'Lab',
+    title: 'Lab',
+    description: 'Canvas experiments — Perlin noise fields, Voronoi diagrams, spring physics, and cursor trails.',
+    preview: 'lab',
+  },
+];
+---
+
+<Layout
+  title="Experiments — Jon Osmond"
+  description="Experimental and creative pages exploring generative art, live data, and interactive interfaces."
+>
+  <main class="exp">
+    <header class="exp__header">
+      <a href="/" class="exp__back" aria-label="Back to home">
+        <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M10 3L5 8l5 5" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        Home
+      </a>
+      <p class="exp__eyebrow">Experiments</p>
+      <h1 class="exp__title">Craft &amp;<br />Curiosity</h1>
+      <p class="exp__lead">
+        A collection of experimental pages — generative art,<br />
+        live data visualizations, and interactive playgrounds.
+      </p>
+    </header>
+
+    <section class="exp__grid" aria-label="Experiments">
+      {items.map(({ href, tag, title, description, preview }) => (
+        <a href={href} class="exp__card" data-preview={preview}>
+          <div class="exp__preview" aria-hidden="true">
+            <canvas class="exp__canvas" data-preview={preview}></canvas>
+          </div>
+          <div class="exp__body">
+            <span class="exp__tag">{tag}</span>
+            <h2 class="exp__card-title">{title}</h2>
+            <p class="exp__card-desc">{description}</p>
+            <span class="exp__arrow" aria-hidden="true">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M3 8h10M9 4l4 4-4 4" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+            </span>
+          </div>
+        </a>
+      ))}
+    </section>
+  </main>
+  <Footer />
+</Layout>
+
+<script>
+  const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const isDark = !window.matchMedia('(prefers-color-scheme: light)').matches;
+  const accent   = isDark ? '#c46b4b' : '#a04525';
+  const mutedCol = isDark ? '#888884' : '#6b6762';
+  const bgCol    = isDark ? '#0f0f0f' : '#f5f0e8';
+  const textCol  = isDark ? 'rgba(245,244,240,0.5)' : 'rgba(26,23,20,0.4)';
+  const edgeCol  = isDark ? 'rgba(245,244,240,0.1)'  : 'rgba(26,23,20,0.1)';
+
+  function setupCanvas(el: HTMLCanvasElement) {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const w = el.offsetWidth;
+    const h = el.offsetHeight;
+    el.width  = w * dpr;
+    el.height = h * dpr;
+    const ctx = el.getContext('2d')!;
+    ctx.scale(dpr, dpr);
+    return { ctx, w, h };
+  }
+
+  // ── Graph preview ─────────────────────────────────────────────────────────
+  function initGraph(canvas: HTMLCanvasElement): () => void {
+    const { ctx, w, h } = setupCanvas(canvas);
+    const nodes = [
+      { x: w * 0.50, y: h * 0.50, vx: 0.2,  vy: -0.15, r: 5, c: accent },
+      { x: w * 0.30, y: h * 0.35, vx: -0.15, vy: 0.2,  r: 4, c: mutedCol },
+      { x: w * 0.70, y: h * 0.35, vx: 0.1,  vy: 0.25,  r: 4, c: mutedCol },
+      { x: w * 0.20, y: h * 0.65, vx: 0.25, vy: -0.1,  r: 3, c: mutedCol },
+      { x: w * 0.55, y: h * 0.72, vx: -0.2, vy: -0.2,  r: 5, c: accent   },
+      { x: w * 0.80, y: h * 0.62, vx: -0.1, vy: 0.18,  r: 3, c: mutedCol },
+      { x: w * 0.40, y: h * 0.20, vx: 0.18, vy: 0.12,  r: 4, c: mutedCol },
+    ];
+    const edges = [[0,1],[0,2],[1,3],[1,6],[2,5],[0,4],[3,4],[4,5]];
+    let raf = 0;
+
+    function draw() {
+      ctx.clearRect(0, 0, w, h);
+      ctx.strokeStyle = edgeCol;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (const [a, b] of edges) {
+        ctx.moveTo(nodes[a].x, nodes[a].y);
+        ctx.lineTo(nodes[b].x, nodes[b].y);
+      }
+      ctx.stroke();
+      for (const n of nodes) {
+        n.x += n.vx; n.y += n.vy;
+        if (n.x < 8  || n.x > w - 8)  n.vx *= -1;
+        if (n.y < 8  || n.y > h - 8)  n.vy *= -1;
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+        ctx.fillStyle = n.c;
+        ctx.fill();
+      }
+      raf = requestAnimationFrame(draw);
+    }
+
+    if (prefersReduced) {
+      ctx.strokeStyle = edgeCol; ctx.lineWidth = 1; ctx.beginPath();
+      for (const [a, b] of edges) { ctx.moveTo(nodes[a].x, nodes[a].y); ctx.lineTo(nodes[b].x, nodes[b].y); }
+      ctx.stroke();
+      for (const n of nodes) { ctx.beginPath(); ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2); ctx.fillStyle = n.c; ctx.fill(); }
+    } else {
+      draw();
+    }
+    return () => cancelAnimationFrame(raf);
+  }
+
+  // ── Signal preview ────────────────────────────────────────────────────────
+  function initSignal(canvas: HTMLCanvasElement): () => void {
+    const { ctx, w, h } = setupCanvas(canvas);
+    const dots = Array.from({ length: 14 }, () => ({
+      x: 10 + Math.random() * (w - 20),
+      y: 10 + Math.random() * (h - 20),
+      phase: Math.random() * Math.PI * 2,
+      speed: 0.03 + Math.random() * 0.04,
+      r: 1.5 + Math.random() * 2,
+    }));
+    let raf = 0;
+
+    function draw() {
+      ctx.clearRect(0, 0, w, h);
+      for (const d of dots) {
+        d.phase += d.speed;
+        const a = (Math.sin(d.phase) * 0.5 + 0.5);
+        const hex = Math.round(a * 220).toString(16).padStart(2, '0');
+        ctx.beginPath();
+        ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2);
+        ctx.fillStyle = `${accent}${hex}`;
+        ctx.fill();
+      }
+      raf = requestAnimationFrame(draw);
+    }
+
+    if (prefersReduced) {
+      for (const d of dots) { ctx.beginPath(); ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2); ctx.fillStyle = `${accent}99`; ctx.fill(); }
+    } else {
+      draw();
+    }
+    return () => cancelAnimationFrame(raf);
+  }
+
+  // ── Ambient preview ───────────────────────────────────────────────────────
+  function initAmbient(canvas: HTMLCanvasElement): () => void {
+    const { ctx, w, h } = setupCanvas(canvas);
+    let t = 0;
+    let raf = 0;
+
+    function draw() {
+      t += 0.008;
+      ctx.clearRect(0, 0, w, h);
+      const cx = w * (0.5 + 0.25 * Math.sin(t));
+      const cy = h * (0.5 + 0.2  * Math.cos(t * 0.7));
+      const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(w, h) * 0.65);
+      grad.addColorStop(0, isDark ? 'rgba(196,107,75,0.35)' : 'rgba(160,69,37,0.25)');
+      grad.addColorStop(1, 'transparent');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, w, h);
+
+      const fontSize = Math.max(10, Math.floor(h * 0.26));
+      ctx.font = `400 ${fontSize}px 'Instrument Serif', serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = textCol;
+      const now = new Date();
+      ctx.fillText(
+        now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }),
+        w / 2, h / 2
+      );
+      raf = requestAnimationFrame(draw);
+    }
+
+    draw();
+    return () => cancelAnimationFrame(raf);
+  }
+
+  // ── Lab preview ───────────────────────────────────────────────────────────
+  function initLab(canvas: HTMLCanvasElement): () => void {
+    const { ctx, w, h } = setupCanvas(canvas);
+    const pts = Array.from({ length: 80 }, () => ({
+      x: Math.random() * w,
+      y: Math.random() * h,
+      vx: (Math.random() - 0.5) * 0.5,
+      vy: (Math.random() - 0.5) * 0.5,
+    }));
+    let raf = 0;
+
+    function draw() {
+      ctx.fillStyle = isDark ? 'rgba(15,15,15,0.18)' : 'rgba(245,240,232,0.18)';
+      ctx.fillRect(0, 0, w, h);
+      for (const p of pts) {
+        p.vx += Math.sin(p.y * 0.05) * 0.04;
+        p.vy += Math.cos(p.x * 0.05) * 0.04;
+        p.vx *= 0.97; p.vy *= 0.97;
+        p.x += p.vx; p.y += p.vy;
+        if (p.x < 0) p.x = w; if (p.x > w) p.x = 0;
+        if (p.y < 0) p.y = h; if (p.y > h) p.y = 0;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 1, 0, Math.PI * 2);
+        ctx.fillStyle = isDark ? 'rgba(196,107,75,0.65)' : 'rgba(160,69,37,0.55)';
+        ctx.fill();
+      }
+      raf = requestAnimationFrame(draw);
+    }
+
+    if (prefersReduced) {
+      for (const p of pts) { ctx.beginPath(); ctx.arc(p.x, p.y, 1, 0, Math.PI * 2); ctx.fillStyle = `${accent}99`; ctx.fill(); }
+    } else {
+      draw();
+    }
+    return () => cancelAnimationFrame(raf);
+  }
+
+  const cleanups: Array<() => void> = [];
+  document.querySelectorAll<HTMLCanvasElement>('.exp__canvas').forEach(canvas => {
+    const t = canvas.dataset.preview;
+    if (t === 'graph')   cleanups.push(initGraph(canvas));
+    if (t === 'signal')  cleanups.push(initSignal(canvas));
+    if (t === 'ambient') cleanups.push(initAmbient(canvas));
+    if (t === 'lab')     cleanups.push(initLab(canvas));
+  });
+  document.addEventListener('astro:before-swap', () => cleanups.forEach(fn => fn()), { once: true });
+</script>
+
+<style>
+  .exp {
+    padding: clamp(2rem, 6vw, 5rem);
+    max-width: 72rem;
+    width: 100%;
+  }
+
+  .exp__back {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.8125rem;
+    color: var(--color-muted);
+    text-decoration: none;
+    transition: color 0.2s;
+    margin-bottom: 3rem;
+  }
+  .exp__back:hover { color: var(--color-text); }
+  .exp__back svg { width: 14px; height: 14px; }
+
+  .exp__header {
+    margin-bottom: clamp(3rem, 6vw, 5rem);
+  }
+
+  .exp__eyebrow {
+    font-family: var(--font-body);
+    font-size: 0.75rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-muted);
+    margin: 0 0 1rem;
+  }
+
+  .exp__title {
+    font-family: var(--font-display);
+    font-size: clamp(2.5rem, 6vw, 4.5rem);
+    font-weight: 400;
+    line-height: 1.05;
+    color: var(--color-text);
+    margin: 0 0 1.25rem;
+  }
+
+  .exp__lead {
+    font-size: 1rem;
+    color: var(--color-muted);
+    line-height: 1.6;
+    margin: 0;
+  }
+
+  .exp__grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.5rem;
+  }
+
+  @media (max-width: 640px) {
+    .exp__grid { grid-template-columns: 1fr; }
+  }
+
+  .exp__card {
+    display: flex;
+    flex-direction: column;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 12px;
+    text-decoration: none;
+    overflow: hidden;
+    transition: border-color 0.2s, transform 0.2s;
+  }
+  .exp__card:hover {
+    border-color: var(--color-border-highlight);
+    transform: translateY(-2px);
+  }
+  .exp__card:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  .exp__preview {
+    width: 100%;
+    aspect-ratio: 16 / 7;
+    position: relative;
+    overflow: hidden;
+    background: var(--color-bg);
+  }
+
+  .exp__canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  .exp__body {
+    padding: 1.25rem 1.5rem 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    flex: 1;
+  }
+
+  .exp__tag {
+    font-family: var(--font-body);
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-accent);
+  }
+
+  .exp__card-title {
+    font-family: var(--font-display);
+    font-size: 1.375rem;
+    font-weight: 400;
+    color: var(--color-text);
+    margin: 0;
+    line-height: 1.2;
+  }
+
+  .exp__card-desc {
+    font-size: 0.875rem;
+    color: var(--color-muted);
+    line-height: 1.6;
+    margin: 0.25rem 0 0;
+    flex: 1;
+  }
+
+  .exp__arrow {
+    display: flex;
+    align-self: flex-end;
+    color: var(--color-accent);
+    opacity: 0;
+    transform: translateX(-4px);
+    transition: opacity 0.2s, transform 0.2s;
+  }
+  .exp__arrow svg { width: 16px; height: 16px; }
+  .exp__card:hover .exp__arrow {
+    opacity: 1;
+    transform: translateX(0);
+  }
+</style>

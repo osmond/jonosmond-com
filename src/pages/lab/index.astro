@@ -1,0 +1,395 @@
+---
+export const prerender = true;
+import Layout from '../../layouts/Layout.astro';
+import Footer from '../../components/Footer.astro';
+
+const experiments = [
+  {
+    slug:  'noise',
+    tag:   'Flow Field',
+    title: 'Noise Field',
+    desc:  'Particles flowing through an animated Perlin noise vector field. Mouse shifts the flow.',
+    preview: 'noise',
+  },
+  {
+    slug:  'voronoi',
+    tag:   'Geometry',
+    title: 'Voronoi',
+    desc:  'Delaunay triangulation and Voronoi cells from drifting points. Cursor adds a live node.',
+    preview: 'voronoi',
+  },
+  {
+    slug:  'trails',
+    tag:   'Physics',
+    title: 'Cursor Trails',
+    desc:  'Spring-physics cursor trail. Each segment chases the previous with natural damping.',
+    preview: 'trails',
+  },
+  {
+    slug:  'spring',
+    tag:   'Physics',
+    title: 'Spring Mesh',
+    desc:  'A grid of points held by springs. Click to deform — watch the oscillation decay.',
+    preview: 'spring',
+  },
+];
+---
+
+<Layout
+  title="Lab — Jon Osmond"
+  description="Canvas experiments — noise fields, Voronoi diagrams, spring physics, and cursor trails."
+>
+  <main class="lab">
+    <header class="lab__header">
+      <a href="/experiments" class="lab__back">
+        <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M10 3L5 8l5 5" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        Experiments
+      </a>
+      <p class="lab__eyebrow">Lab</p>
+      <h1 class="lab__title">Canvas<br />Experiments</h1>
+      <p class="lab__lead">
+        Interactive playgrounds built directly on the browser's Canvas API —
+        no frameworks, just math and pixels.
+      </p>
+    </header>
+
+    <section class="lab__grid" aria-label="Experiments">
+      {experiments.map(({ slug, tag, title, desc, preview }) => (
+        <a href={`/lab/${slug}`} class="lab__card" data-preview={preview}>
+          <div class="lab__preview" aria-hidden="true">
+            <canvas class="lab__canvas" data-preview={preview}></canvas>
+          </div>
+          <div class="lab__body">
+            <span class="lab__tag">{tag}</span>
+            <h2 class="lab__card-title">{title}</h2>
+            <p class="lab__card-desc">{desc}</p>
+            <span class="lab__arrow" aria-hidden="true">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M3 8h10M9 4l4 4-4 4" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+            </span>
+          </div>
+        </a>
+      ))}
+    </section>
+  </main>
+  <Footer />
+</Layout>
+
+<script>
+  const isDark = !window.matchMedia('(prefers-color-scheme: light)').matches;
+  const accent  = isDark ? '#c46b4b' : '#a04525';
+  const bgAlpha = isDark ? 'rgba(15,15,15,0.18)' : 'rgba(245,240,232,0.18)';
+
+  function setup(el: HTMLCanvasElement) {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const w = el.offsetWidth, h = el.offsetHeight;
+    el.width = w * dpr; el.height = h * dpr;
+    const ctx = el.getContext('2d')!;
+    ctx.scale(dpr, dpr);
+    return { ctx, w, h };
+  }
+
+  // ── Noise preview (flow field particles) ──────────────────────────────────
+  function initNoise(canvas: HTMLCanvasElement): () => void {
+    const { ctx, w, h } = setup(canvas);
+    const pts = Array.from({ length: 100 }, () => ({
+      x: Math.random() * w, y: Math.random() * h,
+      vx: 0, vy: 0,
+    }));
+    let t = 0, raf = 0;
+
+    function draw() {
+      t += 0.003;
+      ctx.fillStyle = bgAlpha;
+      ctx.fillRect(0, 0, w, h);
+      for (const p of pts) {
+        const angle = Math.sin(p.x * 0.04 + t) * Math.PI + Math.cos(p.y * 0.04 + t * 0.7) * Math.PI;
+        p.vx = p.vx * 0.85 + Math.cos(angle) * 0.4;
+        p.vy = p.vy * 0.85 + Math.sin(angle) * 0.4;
+        p.x += p.vx; p.y += p.vy;
+        if (p.x < 0) p.x = w; if (p.x > w) p.x = 0;
+        if (p.y < 0) p.y = h; if (p.y > h) p.y = 0;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 1, 0, Math.PI * 2);
+        ctx.fillStyle = isDark ? 'rgba(196,107,75,0.6)' : 'rgba(160,69,37,0.5)';
+        ctx.fill();
+      }
+      raf = requestAnimationFrame(draw);
+    }
+    draw();
+    return () => cancelAnimationFrame(raf);
+  }
+
+  // ── Voronoi preview ────────────────────────────────────────────────────────
+  function initVoronoi(canvas: HTMLCanvasElement): () => void {
+    const { ctx, w, h } = setup(canvas);
+    const pts = Array.from({ length: 12 }, () => ({
+      x: Math.random() * w, y: Math.random() * h,
+      vx: (Math.random() - 0.5) * 0.5, vy: (Math.random() - 0.5) * 0.5,
+    }));
+    let raf = 0;
+
+    async function loadAndDraw() {
+      const { Delaunay } = await import('d3-delaunay');
+      function draw() {
+        for (const p of pts) {
+          p.x += p.vx; p.y += p.vy;
+          if (p.x < 0 || p.x > w) p.vx *= -1;
+          if (p.y < 0 || p.y > h) p.vy *= -1;
+        }
+        ctx.clearRect(0, 0, w, h);
+        const d = Delaunay.from(pts.map(p => [p.x, p.y]));
+        const v = d.voronoi([0, 0, w, h]);
+        ctx.strokeStyle = isDark ? 'rgba(245,244,240,0.15)' : 'rgba(26,23,20,0.12)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        v.render(ctx);
+        ctx.stroke();
+        for (const p of pts) {
+          ctx.beginPath(); ctx.arc(p.x, p.y, 2.5, 0, Math.PI * 2);
+          ctx.fillStyle = accent; ctx.fill();
+        }
+        raf = requestAnimationFrame(draw);
+      }
+      draw();
+    }
+    loadAndDraw();
+    return () => cancelAnimationFrame(raf);
+  }
+
+  // ── Trails preview ─────────────────────────────────────────────────────────
+  function initTrails(canvas: HTMLCanvasElement): () => void {
+    const { ctx, w, h } = setup(canvas);
+    const N = 18;
+    const segs = Array.from({ length: N }, (_, i) => ({
+      x: w / 2 + Math.cos(i * 0.4) * 20,
+      y: h / 2 + Math.sin(i * 0.4) * 20,
+      vx: 0, vy: 0,
+    }));
+    let target = { x: w / 2, y: h / 2 };
+    let t = 0, raf = 0;
+
+    function draw() {
+      t += 0.025;
+      target.x = w * (0.5 + 0.35 * Math.sin(t));
+      target.y = h * (0.5 + 0.3  * Math.cos(t * 0.8));
+      ctx.fillStyle = bgAlpha;
+      ctx.fillRect(0, 0, w, h);
+      let prev = target;
+      for (let i = 0; i < segs.length; i++) {
+        const s = segs[i];
+        s.vx = s.vx * 0.75 + (prev.x - s.x) * 0.18;
+        s.vy = s.vy * 0.75 + (prev.y - s.y) * 0.18;
+        s.x += s.vx; s.y += s.vy;
+        const alpha = 1 - i / N;
+        ctx.beginPath(); ctx.arc(s.x, s.y, 2.5 * (1 - i / N * 0.6), 0, Math.PI * 2);
+        const hex = Math.round(alpha * 200).toString(16).padStart(2, '0');
+        ctx.fillStyle = `${accent}${hex}`; ctx.fill();
+        prev = s;
+      }
+      raf = requestAnimationFrame(draw);
+    }
+    draw();
+    return () => cancelAnimationFrame(raf);
+  }
+
+  // ── Spring preview ─────────────────────────────────────────────────────────
+  function initSpring(canvas: HTMLCanvasElement): () => void {
+    const { ctx, w, h } = setup(canvas);
+    const COLS = 8, ROWS = 5;
+    const pts = [] as { x: number; y: number; ox: number; oy: number; vx: number; vy: number }[];
+    for (let r = 0; r <= ROWS; r++) {
+      for (let c = 0; c <= COLS; c++) {
+        const ox = (c / COLS) * w;
+        const oy = (r / ROWS) * h;
+        pts.push({ x: ox, y: oy, ox, oy, vx: 0, vy: 0 });
+      }
+    }
+    let raf = 0, t = 0;
+
+    // Auto-poke a random point every 2s
+    function poke() {
+      const idx = Math.floor(Math.random() * pts.length);
+      pts[idx].vx += (Math.random() - 0.5) * 8;
+      pts[idx].vy += (Math.random() - 0.5) * 8;
+    }
+    poke();
+    const pokeId = setInterval(poke, 1800);
+
+    function idx(c: number, r: number) { return r * (COLS + 1) + c; }
+
+    function draw() {
+      t++;
+      ctx.clearRect(0, 0, w, h);
+      // Spring physics
+      for (const p of pts) {
+        p.vx += (p.ox - p.x) * 0.06;
+        p.vy += (p.oy - p.y) * 0.06;
+        p.vx *= 0.88; p.vy *= 0.88;
+        p.x += p.vx; p.y += p.vy;
+      }
+      // Draw edges
+      ctx.strokeStyle = isDark ? 'rgba(245,244,240,0.12)' : 'rgba(26,23,20,0.1)';
+      ctx.lineWidth = 1;
+      for (let r = 0; r <= ROWS; r++) {
+        for (let c = 0; c <= COLS; c++) {
+          if (c < COLS) { ctx.beginPath(); ctx.moveTo(pts[idx(c,r)].x, pts[idx(c,r)].y); ctx.lineTo(pts[idx(c+1,r)].x, pts[idx(c+1,r)].y); ctx.stroke(); }
+          if (r < ROWS) { ctx.beginPath(); ctx.moveTo(pts[idx(c,r)].x, pts[idx(c,r)].y); ctx.lineTo(pts[idx(c,r+1)].x, pts[idx(c,r+1)].y); ctx.stroke(); }
+        }
+      }
+      // Draw nodes
+      for (const p of pts) {
+        const disp = Math.hypot(p.x - p.ox, p.y - p.oy);
+        const a = Math.min(disp / 6, 1);
+        const hex = Math.round(a * 200 + 55).toString(16).padStart(2, '0');
+        ctx.beginPath(); ctx.arc(p.x, p.y, 1.8, 0, Math.PI * 2);
+        ctx.fillStyle = `${accent}${hex}`; ctx.fill();
+      }
+      raf = requestAnimationFrame(draw);
+    }
+    draw();
+    return () => { cancelAnimationFrame(raf); clearInterval(pokeId); };
+  }
+
+  const cleanups: Array<() => void> = [];
+  document.querySelectorAll<HTMLCanvasElement>('.lab__canvas').forEach(canvas => {
+    const t = canvas.dataset.preview;
+    if (t === 'noise')   cleanups.push(initNoise(canvas));
+    if (t === 'voronoi') cleanups.push(initVoronoi(canvas));
+    if (t === 'trails')  cleanups.push(initTrails(canvas));
+    if (t === 'spring')  cleanups.push(initSpring(canvas));
+  });
+  document.addEventListener('astro:before-swap', () => cleanups.forEach(fn => fn()), { once: true });
+</script>
+
+<style>
+  .lab {
+    padding: clamp(2rem, 6vw, 5rem);
+    max-width: 72rem;
+    width: 100%;
+  }
+
+  .lab__back {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.8125rem;
+    color: var(--color-muted);
+    text-decoration: none;
+    transition: color 0.2s;
+    margin-bottom: 3rem;
+  }
+  .lab__back:hover { color: var(--color-text); }
+  .lab__back svg { width: 14px; height: 14px; }
+
+  .lab__header { margin-bottom: clamp(3rem, 6vw, 5rem); }
+
+  .lab__eyebrow {
+    font-family: var(--font-body);
+    font-size: 0.75rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-muted);
+    margin: 0 0 1rem;
+  }
+
+  .lab__title {
+    font-family: var(--font-display);
+    font-size: clamp(2.5rem, 6vw, 4.5rem);
+    font-weight: 400;
+    line-height: 1.05;
+    color: var(--color-text);
+    margin: 0 0 1.25rem;
+  }
+
+  .lab__lead {
+    font-size: 1rem;
+    color: var(--color-muted);
+    line-height: 1.6;
+    margin: 0;
+    max-width: 42ch;
+  }
+
+  .lab__grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.5rem;
+  }
+
+  @media (max-width: 640px) { .lab__grid { grid-template-columns: 1fr; } }
+
+  .lab__card {
+    display: flex;
+    flex-direction: column;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 12px;
+    text-decoration: none;
+    overflow: hidden;
+    transition: border-color 0.2s, transform 0.2s;
+  }
+  .lab__card:hover { border-color: var(--color-border-highlight); transform: translateY(-2px); }
+  .lab__card:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+
+  .lab__preview {
+    width: 100%;
+    aspect-ratio: 16 / 7;
+    position: relative;
+    overflow: hidden;
+    background: var(--color-bg);
+  }
+
+  .lab__canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  .lab__body {
+    padding: 1.25rem 1.5rem 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    flex: 1;
+  }
+
+  .lab__tag {
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-accent);
+  }
+
+  .lab__card-title {
+    font-family: var(--font-display);
+    font-size: 1.375rem;
+    font-weight: 400;
+    color: var(--color-text);
+    margin: 0;
+  }
+
+  .lab__card-desc {
+    font-size: 0.875rem;
+    color: var(--color-muted);
+    line-height: 1.6;
+    margin: 0.25rem 0 0;
+    flex: 1;
+  }
+
+  .lab__arrow {
+    display: flex;
+    align-self: flex-end;
+    color: var(--color-accent);
+    opacity: 0;
+    transform: translateX(-4px);
+    transition: opacity 0.2s, transform 0.2s;
+  }
+  .lab__arrow svg { width: 16px; height: 16px; }
+  .lab__card:hover .lab__arrow { opacity: 1; transform: translateX(0); }
+</style>

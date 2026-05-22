@@ -1,0 +1,219 @@
+---
+export const prerender = true;
+import Layout from '../../layouts/Layout.astro';
+---
+
+<Layout title="Spring Mesh — Lab — Jon Osmond" description="A grid of points held by springs. Click to deform and watch the oscillation decay.">
+  <div class="lab-exp">
+    <nav class="lab-exp__nav">
+      <a href="/lab" class="lab-exp__back">
+        <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M10 3L5 8l5 5" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        Lab
+      </a>
+      <span class="lab-exp__name">Spring Mesh</span>
+    </nav>
+    <canvas id="exp-canvas" aria-label="Interactive spring mesh that deforms on click"></canvas>
+    <div class="lab-exp__info" id="exp-info">
+      <strong>Spring Mesh</strong>
+      Click or drag to push the mesh. Each point is pulled back by a spring with Hooke's law. Watch the oscillation damp out.
+      <button class="lab-exp__dismiss" id="dismiss-info" aria-label="Dismiss description">✕</button>
+    </div>
+  </div>
+</Layout>
+
+<script>
+  const canvas = document.getElementById('exp-canvas') as HTMLCanvasElement;
+  const ctx    = canvas.getContext('2d')!;
+  const dpr    = Math.min(window.devicePixelRatio || 1, 2);
+  const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const isDark = !window.matchMedia('(prefers-color-scheme: light)').matches;
+
+  let W = 0, H = 0;
+  let COLS = 20, ROWS = 14;
+  type Point = { x: number; y: number; ox: number; oy: number; vx: number; vy: number };
+  let pts: Point[] = [];
+
+  function buildGrid() {
+    pts = [];
+    const gapX = W / (COLS);
+    const gapY = H / (ROWS);
+    for (let r = 0; r <= ROWS; r++) {
+      for (let c = 0; c <= COLS; c++) {
+        const ox = c * gapX;
+        const oy = r * gapY;
+        pts.push({ x: ox, y: oy, ox, oy, vx: 0, vy: 0 });
+      }
+    }
+  }
+
+  function resize() {
+    W = canvas.offsetWidth; H = canvas.offsetHeight;
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    ctx.scale(dpr, dpr);
+    buildGrid();
+  }
+  resize();
+  window.addEventListener('resize', resize, { passive: true });
+
+  function idx(c: number, r: number) { return r * (COLS + 1) + c; }
+
+  // ─── Interaction ───────────────────────────────────────────────────────────
+  const RADIUS  = 80;
+  const STRENGTH = 5;
+
+  function pokeAt(mx: number, my: number) {
+    for (const p of pts) {
+      const dx = p.x - mx;
+      const dy = p.y - my;
+      const dist = Math.hypot(dx, dy);
+      if (dist < RADIUS && dist > 0) {
+        const force = (1 - dist / RADIUS) * STRENGTH;
+        p.vx += (dx / dist) * force;
+        p.vy += (dy / dist) * force;
+      }
+    }
+  }
+
+  let poking = false;
+  function toCanvas(e: MouseEvent | Touch): { x: number; y: number } {
+    const r = canvas.getBoundingClientRect();
+    return { x: (e as MouseEvent).clientX - r.left, y: (e as MouseEvent).clientY - r.top };
+  }
+
+  canvas.addEventListener('mousedown', e => { poking = true; pokeAt(...Object.values(toCanvas(e)) as [number, number]); });
+  canvas.addEventListener('mousemove', e => { if (poking) pokeAt(toCanvas(e).x, toCanvas(e).y); });
+  canvas.addEventListener('mouseup',   () => { poking = false; });
+  canvas.addEventListener('mouseleave',() => { poking = false; });
+
+  canvas.addEventListener('touchstart', e => {
+    e.preventDefault();
+    const r = canvas.getBoundingClientRect();
+    pokeAt(e.touches[0].clientX - r.left, e.touches[0].clientY - r.top);
+  }, { passive: false });
+
+  canvas.addEventListener('touchmove', e => {
+    e.preventDefault();
+    const r = canvas.getBoundingClientRect();
+    pokeAt(e.touches[0].clientX - r.left, e.touches[0].clientY - r.top);
+  }, { passive: false });
+
+  // ─── Animation ─────────────────────────────────────────────────────────────
+  let raf = 0;
+  const STIFFNESS = 0.065;
+  const DAMPING   = 0.88;
+
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+
+    // Physics
+    for (const p of pts) {
+      p.vx += (p.ox - p.x) * STIFFNESS;
+      p.vy += (p.oy - p.y) * STIFFNESS;
+      p.vx *= DAMPING;
+      p.vy *= DAMPING;
+      p.x += p.vx;
+      p.y += p.vy;
+    }
+
+    // Draw edges
+    ctx.lineWidth = 1;
+    for (let r = 0; r <= ROWS; r++) {
+      for (let c = 0; c <= COLS; c++) {
+        const p = pts[idx(c, r)];
+        const disp = Math.hypot(p.x - p.ox, p.y - p.oy);
+        const energy = Math.min(disp / 10, 1);
+
+        if (c < COLS) {
+          const q = pts[idx(c + 1, r)];
+          const edgeEnergy = (energy + Math.min(Math.hypot(q.x - q.ox, q.y - q.oy) / 10, 1)) / 2;
+          ctx.strokeStyle = isDark
+            ? `rgba(196,107,75,${0.06 + edgeEnergy * 0.35})`
+            : `rgba(160,69,37,${0.06 + edgeEnergy * 0.25})`;
+          ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y); ctx.stroke();
+        }
+
+        if (r < ROWS) {
+          const q = pts[idx(c, r + 1)];
+          const edgeEnergy = (energy + Math.min(Math.hypot(q.x - q.ox, q.y - q.oy) / 10, 1)) / 2;
+          ctx.strokeStyle = isDark
+            ? `rgba(196,107,75,${0.06 + edgeEnergy * 0.35})`
+            : `rgba(160,69,37,${0.06 + edgeEnergy * 0.25})`;
+          ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y); ctx.stroke();
+        }
+      }
+    }
+
+    // Draw nodes
+    for (const p of pts) {
+      const disp = Math.hypot(p.x - p.ox, p.y - p.oy);
+      const energy = Math.min(disp / 8, 1);
+      const r = 1.5 + energy * 2;
+      ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+      ctx.fillStyle = isDark
+        ? `rgba(196,107,75,${0.25 + energy * 0.6})`
+        : `rgba(160,69,37,${0.2 + energy * 0.5})`;
+      ctx.fill();
+    }
+
+    raf = requestAnimationFrame(draw);
+  }
+
+  if (prefersReduced) {
+    draw(); cancelAnimationFrame(raf);
+  } else {
+    draw();
+  }
+
+  document.getElementById('dismiss-info')?.addEventListener('click', () => {
+    document.getElementById('exp-info')?.remove();
+  });
+
+  document.addEventListener('astro:before-swap', () => {
+    cancelAnimationFrame(raf);
+    window.removeEventListener('resize', resize);
+  }, { once: true });
+</script>
+
+<style is:global>
+  html, body { margin: 0; padding: 0; overflow: hidden; }
+</style>
+
+<style>
+  .lab-exp {
+    position: relative;
+    width: 100vw;
+    height: 100svh;
+    overflow: hidden;
+    background: var(--color-bg);
+  }
+  #exp-canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
+  .lab-exp__nav {
+    position: absolute; top: 1.25rem; left: 1.25rem; z-index: 10;
+    display: flex; align-items: center; gap: 0.875rem;
+  }
+  .lab-exp__back {
+    display: inline-flex; align-items: center; gap: 0.35rem;
+    font-size: 0.8125rem; color: var(--color-muted); text-decoration: none;
+    background: var(--color-surface); border: 1px solid var(--color-border);
+    border-radius: 6px; padding: 0.35rem 0.7rem;
+    transition: color 0.2s, border-color 0.2s; backdrop-filter: blur(8px);
+  }
+  .lab-exp__back:hover { color: var(--color-text); border-color: var(--color-border-highlight); }
+  .lab-exp__back svg { width: 13px; height: 13px; }
+  .lab-exp__name { font-size: 0.8125rem; color: var(--color-muted); }
+  .lab-exp__info {
+    position: absolute; bottom: 1.5rem; left: 1.5rem; right: 1.5rem;
+    max-width: 36rem; font-size: 0.8125rem; color: var(--color-muted);
+    background: var(--color-surface); border: 1px solid var(--color-border);
+    border-radius: 8px; padding: 0.75rem 2.5rem 0.75rem 1rem; z-index: 10; line-height: 1.5;
+  }
+  .lab-exp__info strong { color: var(--color-text); display: block; margin-bottom: 0.25rem; font-size: 0.875rem; }
+  .lab-exp__dismiss {
+    position: absolute; top: 0.6rem; right: 0.75rem;
+    background: none; border: none; color: var(--color-muted);
+    cursor: pointer; font-size: 0.75rem; padding: 0.2rem; transition: color 0.2s;
+  }
+  .lab-exp__dismiss:hover { color: var(--color-text); }
+</style>

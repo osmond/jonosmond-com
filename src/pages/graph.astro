@@ -1,0 +1,411 @@
+---
+export const prerender = true;
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout
+  title="Skills Graph — Jon Osmond"
+  description="A force-directed graph of skills, tools, and projects."
+>
+  <div class="graph-page">
+    <nav class="graph-nav" aria-label="Page navigation">
+      <a href="/experiments" class="graph-nav__back">
+        <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M10 3L5 8l5 5" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        Experiments
+      </a>
+      <span class="graph-nav__title">Skills Graph</span>
+    </nav>
+
+    <canvas id="graph-canvas" aria-label="Interactive skills and tools network graph"></canvas>
+
+    <div class="graph-legend" aria-label="Node categories">
+      <span class="graph-legend__item graph-legend__item--skill">Skill</span>
+      <span class="graph-legend__item graph-legend__item--tool">Tool</span>
+      <span class="graph-legend__item graph-legend__item--project">Project</span>
+    </div>
+
+    <div class="graph-hint" id="graph-hint" aria-hidden="true">
+      Drag nodes · Scroll to zoom
+    </div>
+
+    <div class="graph-tooltip" id="graph-tooltip" role="tooltip" aria-hidden="true"></div>
+  </div>
+</Layout>
+
+<script>
+  import {
+    forceSimulation,
+    forceLink,
+    forceManyBody,
+    forceCenter,
+    forceCollide,
+    type SimulationNodeDatum,
+    type SimulationLinkDatum,
+  } from 'd3-force';
+  import { zoom as d3zoom, type ZoomTransform, zoomIdentity } from 'd3-zoom';
+  import { select } from 'd3-selection';
+  import rawData from '../data/graph.json';
+
+  // ─── Types ─────────────────────────────────────────────────────────────────
+  interface GNode extends SimulationNodeDatum {
+    id: string;
+    label: string;
+    group: 'skill' | 'tool' | 'project';
+  }
+  interface GLink extends SimulationLinkDatum<GNode> {
+    source: string | GNode;
+    target: string | GNode;
+  }
+
+  // ─── Colour scheme ──────────────────────────────────────────────────────────
+  const isDark = !window.matchMedia('(prefers-color-scheme: light)').matches;
+  const COLORS = {
+    skill:       isDark ? '#c46b4b' : '#a04525',
+    tool:        isDark ? '#888884' : '#6b6762',
+    project:     isDark ? '#f5f4f0' : '#1a1714',
+    edgeDefault: isDark ? 'rgba(245,244,240,0.1)'  : 'rgba(26,23,20,0.1)',
+    edgeHover:   isDark ? 'rgba(245,244,240,0.35)' : 'rgba(26,23,20,0.3)',
+    nodeFocus:   isDark ? '#c46b4b' : '#a04525',
+    label:       isDark ? 'rgba(245,244,240,0.75)' : 'rgba(26,23,20,0.7)',
+    labelHover:  isDark ? '#f5f4f0' : '#1a1714',
+    bg:          isDark ? '#0f0f0f' : '#f5f0e8',
+  };
+
+  // ─── Canvas setup ──────────────────────────────────────────────────────────
+  const canvas = document.getElementById('graph-canvas') as HTMLCanvasElement;
+  const ctx = canvas.getContext('2d')!;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+  let W = 0, H = 0;
+  function resize() {
+    W = canvas.offsetWidth;
+    H = canvas.offsetHeight;
+    canvas.width  = W * dpr;
+    canvas.height = H * dpr;
+    ctx.scale(dpr, dpr);
+    simulation.force('center', forceCenter(W / 2, H / 2));
+    simulation.alpha(0.3).restart();
+  }
+
+  // ─── Graph data ────────────────────────────────────────────────────────────
+  const nodes: GNode[] = rawData.nodes.map(n => ({ ...n } as GNode));
+  const links: GLink[] = rawData.links.map(l => ({ ...l } as unknown as GLink));
+
+  // ─── Simulation ────────────────────────────────────────────────────────────
+  const simulation = forceSimulation<GNode>(nodes)
+    .force('link',    forceLink<GNode, GLink>(links).id(d => d.id).distance(90).strength(0.5))
+    .force('charge',  forceManyBody<GNode>().strength(-280))
+    .force('center',  forceCenter(400, 300))
+    .force('collide', forceCollide<GNode>(32))
+    .on('tick', draw);
+
+  // ─── Zoom ──────────────────────────────────────────────────────────────────
+  let transform: ZoomTransform = zoomIdentity;
+  const zoom = d3zoom<HTMLCanvasElement, unknown>()
+    .scaleExtent([0.25, 4])
+    .on('zoom', ({ transform: t }) => { transform = t; draw(); });
+  select(canvas).call(zoom);
+
+  // ─── Drag state ────────────────────────────────────────────────────────────
+  let dragging: GNode | null = null;
+  let hovering: GNode | null = null;
+
+  function simCoords(clientX: number, clientY: number) {
+    const rect = canvas.getBoundingClientRect();
+    const x = (clientX - rect.left - transform.x) / transform.k;
+    const y = (clientY - rect.top  - transform.y) / transform.k;
+    return { x, y };
+  }
+
+  function findNode(clientX: number, clientY: number, radius = 22): GNode | null {
+    const { x, y } = simCoords(clientX, clientY);
+    let closest: GNode | null = null;
+    let minD = radius;
+    for (const n of nodes) {
+      if (n.x == null || n.y == null) continue;
+      const d = Math.hypot(n.x - x, n.y - y);
+      if (d < minD) { minD = d; closest = n; }
+    }
+    return closest;
+  }
+
+  canvas.addEventListener('mousedown', e => {
+    const n = findNode(e.clientX, e.clientY);
+    if (!n) return;
+    dragging = n;
+    n.fx = n.x; n.fy = n.y;
+    simulation.alphaTarget(0.3).restart();
+  });
+
+  canvas.addEventListener('mousemove', e => {
+    if (dragging) {
+      const { x, y } = simCoords(e.clientX, e.clientY);
+      dragging.fx = x; dragging.fy = y;
+      return;
+    }
+    const prev = hovering;
+    hovering = findNode(e.clientX, e.clientY, 28);
+    if (hovering !== prev) {
+      canvas.style.cursor = hovering ? 'grab' : 'default';
+      showTooltip(hovering, e);
+      draw();
+    }
+  });
+
+  canvas.addEventListener('mouseup', () => {
+    if (dragging) {
+      dragging.fx = null; dragging.fy = null;
+      simulation.alphaTarget(0);
+    }
+    dragging = null;
+    canvas.style.cursor = hovering ? 'grab' : 'default';
+  });
+
+  canvas.addEventListener('mouseleave', () => {
+    hovering = null;
+    hideTooltip();
+    draw();
+  });
+
+  // Touch drag support
+  canvas.addEventListener('touchstart', e => {
+    const t = e.touches[0];
+    const n = findNode(t.clientX, t.clientY);
+    if (!n) return;
+    e.preventDefault();
+    dragging = n;
+    n.fx = n.x; n.fy = n.y;
+    simulation.alphaTarget(0.3).restart();
+  }, { passive: false });
+
+  canvas.addEventListener('touchmove', e => {
+    if (!dragging) return;
+    e.preventDefault();
+    const t = e.touches[0];
+    const { x, y } = simCoords(t.clientX, t.clientY);
+    dragging.fx = x; dragging.fy = y;
+  }, { passive: false });
+
+  canvas.addEventListener('touchend', () => {
+    if (dragging) { dragging.fx = null; dragging.fy = null; simulation.alphaTarget(0); }
+    dragging = null;
+  });
+
+  // ─── Tooltip ───────────────────────────────────────────────────────────────
+  const tooltip = document.getElementById('graph-tooltip')!;
+  function showTooltip(node: GNode | null, e: MouseEvent) {
+    if (!node) { hideTooltip(); return; }
+    const groupLabel = node.group.charAt(0).toUpperCase() + node.group.slice(1);
+    tooltip.textContent = `${node.label} · ${groupLabel}`;
+    tooltip.style.left = `${e.clientX + 14}px`;
+    tooltip.style.top  = `${e.clientY - 10}px`;
+    tooltip.removeAttribute('aria-hidden');
+    tooltip.classList.add('is-visible');
+  }
+  function hideTooltip() {
+    tooltip.setAttribute('aria-hidden', 'true');
+    tooltip.classList.remove('is-visible');
+  }
+
+  // ─── Draw ──────────────────────────────────────────────────────────────────
+  function nodeColor(n: GNode) {
+    if (n === hovering || n === dragging) return COLORS.nodeFocus;
+    return COLORS[n.group];
+  }
+
+  function isConnectedToHover(n: GNode): boolean {
+    if (!hovering) return false;
+    return links.some(l => {
+      const s = l.source as GNode;
+      const t = l.target as GNode;
+      return (s === hovering && t === n) || (t === hovering && s === n);
+    });
+  }
+
+  function draw() {
+    ctx.save();
+    ctx.clearRect(0, 0, W, H);
+    ctx.translate(transform.x, transform.y);
+    ctx.scale(transform.k, transform.k);
+
+    // Edges
+    for (const l of links) {
+      const s = l.source as GNode;
+      const t = l.target as GNode;
+      if (s.x == null || t.x == null) continue;
+
+      const isHighlighted = hovering && (s === hovering || t === hovering);
+      ctx.beginPath();
+      ctx.moveTo(s.x!, s.y!);
+      ctx.lineTo(t.x!, t.y!);
+      ctx.strokeStyle = isHighlighted ? COLORS.edgeHover : COLORS.edgeDefault;
+      ctx.lineWidth   = isHighlighted ? 1.5 : 1;
+      ctx.stroke();
+    }
+
+    // Nodes
+    for (const n of nodes) {
+      if (n.x == null) continue;
+      const isActive  = n === hovering || n === dragging;
+      const isNeighbour = isConnectedToHover(n);
+      const r = n.group === 'project' ? 8 : n.group === 'skill' ? 6 : 5;
+
+      // Glow for hover/drag
+      if (isActive) {
+        ctx.beginPath();
+        ctx.arc(n.x!, n.y!, r + 6, 0, Math.PI * 2);
+        ctx.fillStyle = isDark ? 'rgba(196,107,75,0.2)' : 'rgba(160,69,37,0.15)';
+        ctx.fill();
+      }
+
+      ctx.beginPath();
+      ctx.arc(n.x!, n.y!, r, 0, Math.PI * 2);
+      ctx.fillStyle = nodeColor(n);
+      ctx.globalAlpha = (hovering && !isActive && !isNeighbour) ? 0.3 : 1;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+
+      // Labels
+      const showLabel = isActive || isNeighbour || !hovering;
+      if (showLabel) {
+        ctx.font = `${isActive ? 500 : 400} ${isActive ? 11 : 10}px 'Inter Variable', sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        ctx.fillStyle = isActive ? COLORS.labelHover : COLORS.label;
+        ctx.globalAlpha = (hovering && !isActive && !isNeighbour) ? 0.3 : 1;
+        ctx.fillText(n.label, n.x!, n.y! + r + 4);
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    ctx.restore();
+
+    // Hide hint after first interaction
+    if (dragging) {
+      document.getElementById('graph-hint')?.remove();
+    }
+  }
+
+  // ─── Init & cleanup ────────────────────────────────────────────────────────
+  resize();
+  const ro = new ResizeObserver(resize);
+  ro.observe(canvas.parentElement!);
+
+  document.addEventListener('astro:before-swap', () => {
+    simulation.stop();
+    ro.disconnect();
+    select(canvas).on('.zoom', null);
+  }, { once: true });
+</script>
+
+<style>
+  .graph-page {
+    position: relative;
+    width: 100%;
+    height: 100svh;
+    overflow: hidden;
+    background: var(--color-bg);
+  }
+
+  #graph-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    touch-action: none;
+  }
+
+  .graph-nav {
+    position: absolute;
+    top: 1.5rem;
+    left: 1.5rem;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  .graph-nav__back {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.8125rem;
+    color: var(--color-muted);
+    text-decoration: none;
+    transition: color 0.2s;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    padding: 0.4rem 0.75rem;
+  }
+  .graph-nav__back:hover { color: var(--color-text); border-color: var(--color-border-highlight); }
+  .graph-nav__back svg { width: 13px; height: 13px; }
+
+  .graph-nav__title {
+    font-family: var(--font-body);
+    font-size: 0.8125rem;
+    color: var(--color-muted);
+  }
+
+  .graph-legend {
+    position: absolute;
+    bottom: 1.5rem;
+    left: 1.5rem;
+    z-index: 10;
+    display: flex;
+    gap: 1rem;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    padding: 0.5rem 0.875rem;
+  }
+
+  .graph-legend__item {
+    font-size: 0.75rem;
+    color: var(--color-muted);
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .graph-legend__item::before {
+    content: '';
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+  }
+  .graph-legend__item--skill::before   { background: var(--color-accent); }
+  .graph-legend__item--tool::before    { background: var(--color-muted); }
+  .graph-legend__item--project::before { background: var(--color-text); }
+
+  .graph-hint {
+    position: absolute;
+    bottom: 1.5rem;
+    right: 1.5rem;
+    z-index: 10;
+    font-size: 0.75rem;
+    color: var(--color-muted);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    padding: 0.4rem 0.75rem;
+    pointer-events: none;
+  }
+
+  .graph-tooltip {
+    position: fixed;
+    z-index: 100;
+    font-size: 0.75rem;
+    color: var(--color-text);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border-highlight);
+    border-radius: 6px;
+    padding: 0.35rem 0.65rem;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+    white-space: nowrap;
+  }
+  .graph-tooltip.is-visible { opacity: 1; }
+</style>

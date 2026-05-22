@@ -1,0 +1,596 @@
+---
+export const prerender = false;
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout
+  title="Ambient — Jon Osmond"
+  description="A living screensaver — current time, music, and Minneapolis weather."
+>
+  <div class="ambient" id="ambient-root">
+    <!-- Background canvas (grain + gradient) -->
+    <canvas class="ambient__bg" id="ambient-bg" aria-hidden="true"></canvas>
+
+    <!-- Nav -->
+    <nav class="ambient__nav" aria-label="Page navigation">
+      <a href="/experiments" class="ambient__back">
+        <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M10 3L5 8l5 5" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        Experiments
+      </a>
+      <button class="ambient__fullscreen" id="fullscreen-btn" aria-label="Enter fullscreen" title="Enter fullscreen">
+        <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M2 5V2h3M11 2h3v3M14 11v3h-3M5 14H2v-3" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      </button>
+    </nav>
+
+    <!-- Content -->
+    <main class="ambient__content" aria-label="Ambient display">
+      <!-- Clock -->
+      <section class="ambient__clock" aria-label="Current time">
+        <p class="ambient__city">Minneapolis</p>
+        <time class="ambient__time" id="ambient-time" aria-live="off">—</time>
+        <p class="ambient__date" id="ambient-date" aria-live="off">—</p>
+      </section>
+
+      <!-- Lower row: Music + Weather -->
+      <div class="ambient__lower">
+        <!-- Music -->
+        <section class="ambient__music" aria-label="Now playing" id="ambient-music">
+          <p class="ambient__section-label">Listening</p>
+          <div class="ambient__music-content" id="music-content">
+            <div class="ambient__music-skeleton" aria-hidden="true"></div>
+          </div>
+        </section>
+
+        <!-- Weather -->
+        <section class="ambient__weather" aria-label="Minneapolis weather" id="ambient-weather">
+          <p class="ambient__section-label">Minneapolis</p>
+          <div class="ambient__weather-content" id="weather-content">
+            <div class="ambient__weather-skeleton" aria-hidden="true"></div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+</Layout>
+
+<script>
+  // ─── Types ─────────────────────────────────────────────────────────────────
+  interface SpotifyData {
+    isPlaying: boolean;
+    track:     string;
+    artist:    string;
+    albumArt:  string;
+    url:       string;
+    albumUrl:  string;
+    progressMs: number;
+    durationMs: number;
+  }
+
+  interface WeatherData {
+    temp:        number;
+    code:        number;
+    wind:        number;
+    description: string;
+    icon:        string;
+  }
+
+  const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const isDark = !window.matchMedia('(prefers-color-scheme: light)').matches;
+
+  // ─── Background canvas (grain) ─────────────────────────────────────────────
+  (function () {
+    const canvas = document.getElementById('ambient-bg') as HTMLCanvasElement | null;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d')!;
+    let raf = 0;
+
+    function resize() {
+      canvas!.width  = window.innerWidth;
+      canvas!.height = window.innerHeight;
+    }
+
+    function drawGrain() {
+      const w = canvas!.width, h = canvas!.height;
+      const img = ctx.createImageData(w, h);
+      const d = img.data;
+      for (let i = 0; i < d.length; i += 4) {
+        const v = (Math.random() * 255) | 0;
+        d[i] = v; d[i+1] = v; d[i+2] = v; d[i+3] = 14;
+      }
+      ctx.putImageData(img, 0, 0);
+      raf = requestAnimationFrame(drawGrain);
+    }
+
+    resize();
+    if (!prefersReduced) {
+      drawGrain();
+    } else {
+      drawGrain();
+      cancelAnimationFrame(raf);
+    }
+
+    window.addEventListener('resize', resize, { passive: true });
+    document.addEventListener('astro:before-swap', () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('resize', resize);
+    }, { once: true });
+  })();
+
+  // ─── Live clock ────────────────────────────────────────────────────────────
+  (function () {
+    const timeEl = document.getElementById('ambient-time') as HTMLElement | null;
+    const dateEl = document.getElementById('ambient-date') as HTMLElement | null;
+    if (!timeEl || !dateEl) return;
+
+    const tz = 'America/Chicago';
+    function tick() {
+      const now = new Date();
+      timeEl!.textContent = now.toLocaleTimeString('en-US', {
+        timeZone: tz, hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true,
+      });
+      dateEl!.textContent = now.toLocaleDateString('en-US', {
+        timeZone: tz, weekday: 'long', month: 'long', day: 'numeric',
+      });
+    }
+    tick();
+    const id = setInterval(tick, 1000);
+    document.addEventListener('astro:before-swap', () => clearInterval(id), { once: true });
+  })();
+
+  // ─── Album colour extraction ────────────────────────────────────────────────
+  function extractColour(src: string): Promise<string> {
+    return new Promise(resolve => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        try {
+          const c = document.createElement('canvas');
+          c.width = 50; c.height = 50;
+          const ctx2 = c.getContext('2d')!;
+          ctx2.drawImage(img, 0, 0, 50, 50);
+          const data = ctx2.getImageData(0, 0, 50, 50).data;
+          let r = 0, g = 0, b = 0, n = 0;
+          for (let i = 0; i < data.length; i += 4) {
+            const br = (data[i] + data[i+1] + data[i+2]) / 3;
+            if (br > 25 && br < 230) { r += data[i]; g += data[i+1]; b += data[i+2]; n++; }
+          }
+          resolve(n > 0 ? `rgb(${Math.round(r/n)},${Math.round(g/n)},${Math.round(b/n)})` : 'rgb(196,107,75)');
+        } catch { resolve('rgb(196,107,75)'); }
+      };
+      img.onerror = () => resolve('rgb(196,107,75)');
+      img.src = src;
+    });
+  }
+
+  // ─── Apply album colour to background ──────────────────────────────────────
+  function setAlbumColour(colour: string) {
+    const root = document.getElementById('ambient-root');
+    if (!root) return;
+    root.style.setProperty('--album-color', colour);
+  }
+
+  // ─── Spotify ───────────────────────────────────────────────────────────────
+  let currentTrack = '';
+
+  // SVG weather icons
+  const WEATHER_ICONS: Record<string, string> = {
+    'sun':           `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/><line x1="4.2" y1="4.2" x2="6.3" y2="6.3"/><line x1="17.7" y1="17.7" x2="19.8" y2="19.8"/><line x1="4.2" y1="19.8" x2="6.3" y2="17.7"/><line x1="17.7" y1="6.3" x2="19.8" y2="4.2"/></svg>`,
+    'partly-cloudy': `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M12 2v2m0 16v2M2 12h2m16 0h2m-3.5-7.5-1.4 1.4M6.9 17.1l-1.4 1.4m0-12.8 1.4 1.4M17.1 17.1l1.4 1.4"/><circle cx="12" cy="12" r="3"/><path d="M20 17.5a3.5 3.5 0 0 0-7 0h7Z"/></svg>`,
+    'cloudy':        `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M20 17.5a3.5 3.5 0 0 0-3.5-3.5H6a4 4 0 0 1 0-8 4 4 0 0 1 7.75 1.5 3.5 3.5 0 0 1 6.25 2A3.5 3.5 0 0 1 20 17.5Z"/></svg>`,
+    'fog':           `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 8h18M3 12h18M3 16h18"/></svg>`,
+    'rain':          `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M20 16.5a3.5 3.5 0 0 0-3.5-3.5H6a4 4 0 0 1 0-8 4 4 0 0 1 7.75 1.5 3.5 3.5 0 0 1 6.25 2A3.5 3.5 0 0 1 20 16.5Z"/><line x1="8" y1="19" x2="8" y2="21"/><line x1="12" y1="19" x2="12" y2="21"/><line x1="16" y1="19" x2="16" y2="21"/></svg>`,
+    'snow':          `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M20 16.5a3.5 3.5 0 0 0-3.5-3.5H6a4 4 0 0 1 0-8 4 4 0 0 1 7.75 1.5 3.5 3.5 0 0 1 6.25 2A3.5 3.5 0 0 1 20 16.5Z"/><circle cx="8" cy="20" r="1"/><circle cx="12" cy="20" r="1"/><circle cx="16" cy="20" r="1"/></svg>`,
+    'storm':         `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M20 16.5a3.5 3.5 0 0 0-3.5-3.5H6a4 4 0 0 1 0-8 4 4 0 0 1 7.75 1.5 3.5 3.5 0 0 1 6.25 2A3.5 3.5 0 0 1 20 16.5Z"/><polyline points="13 17 11 21 15 21 13 25"/></svg>`,
+  };
+
+  async function loadSpotify(force = false) {
+    const content = document.getElementById('music-content');
+    if (!content) return;
+    try {
+      const res = await fetch('/api/spotify');
+      if (!res.ok) throw new Error('no data');
+      const data = (await res.json()) as SpotifyData;
+
+      if (!force && data.track === currentTrack) return;
+      currentTrack = data.track;
+
+      const colour = await extractColour(data.albumArt);
+      setAlbumColour(colour);
+
+      const pct = data.durationMs > 0
+        ? Math.min((data.progressMs / data.durationMs) * 100, 100)
+        : 0;
+
+      content.innerHTML = `
+        <a class="ambient-track" href="${data.url}" target="_blank" rel="noopener noreferrer" aria-label="Open ${data.track} on Spotify">
+          <img class="ambient-track__art" src="${data.albumArt}" alt="${data.track} album art" width="56" height="56" crossorigin="anonymous" />
+          <div class="ambient-track__info">
+            <span class="ambient-track__name">${data.track}</span>
+            <span class="ambient-track__artist">${data.artist}</span>
+            ${data.isPlaying ? `<div class="ambient-track__progress"><div class="ambient-track__bar" style="width:${pct}%"></div></div>` : ''}
+          </div>
+          <span class="ambient-track__status">${data.isPlaying
+            ? '<span class="ambient-eq" aria-label="Now playing"><span></span><span></span><span></span></span>'
+            : '<span class="ambient-track__idle">Last played</span>'
+          }</span>
+        </a>
+      `;
+    } catch {
+      if (force) {
+        const content2 = document.getElementById('music-content');
+        if (content2) content2.innerHTML = `<p class="ambient-idle">Nothing playing right now.</p>`;
+      }
+    }
+  }
+
+  async function loadWeather() {
+    const content = document.getElementById('weather-content');
+    if (!content) return;
+    try {
+      const res = await fetch('/api/weather');
+      if (!res.ok) throw new Error('no weather');
+      const data = (await res.json()) as WeatherData | null;
+      if (!data) throw new Error('null');
+
+      const iconSvg = WEATHER_ICONS[data.icon] ?? WEATHER_ICONS['cloudy'];
+      content.innerHTML = `
+        <div class="ambient-weather">
+          <span class="ambient-weather__icon" aria-hidden="true">${iconSvg}</span>
+          <span class="ambient-weather__temp">${data.temp}°F</span>
+          <span class="ambient-weather__desc">${data.description}</span>
+          <span class="ambient-weather__wind">${data.wind} mph wind</span>
+        </div>
+      `;
+    } catch {
+      const content2 = document.getElementById('weather-content');
+      if (content2) content2.innerHTML = `<p class="ambient-idle">Weather unavailable.</p>`;
+    }
+  }
+
+  // ─── Fullscreen ────────────────────────────────────────────────────────────
+  const fsBtn = document.getElementById('fullscreen-btn');
+  if (fsBtn) {
+    fsBtn.addEventListener('click', () => {
+      const el = document.getElementById('ambient-root');
+      if (!el) return;
+      if (!document.fullscreenElement) {
+        el.requestFullscreen().catch(() => {});
+      } else {
+        document.exitFullscreen().catch(() => {});
+      }
+    });
+  }
+
+  // ─── Boot ──────────────────────────────────────────────────────────────────
+  loadSpotify(true);
+  loadWeather();
+
+  const spotifyId = setInterval(() => loadSpotify(false), 30_000);
+  const weatherId = setInterval(loadWeather, 600_000);
+
+  document.addEventListener('astro:before-swap', () => {
+    clearInterval(spotifyId);
+    clearInterval(weatherId);
+  }, { once: true });
+</script>
+
+<style>
+  @property --album-color {
+    syntax: '<color>';
+    inherits: true;
+    initial-value: rgb(196, 107, 75);
+  }
+
+  .ambient {
+    position: relative;
+    width: 100%;
+    min-height: 100svh;
+    background: var(--color-bg);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    --album-color: rgb(196, 107, 75);
+  }
+
+  /* Radial gradient tinted by album colour */
+  .ambient::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse 70% 60% at 50% 40%, color-mix(in srgb, var(--album-color) 18%, transparent) 0%, transparent 100%);
+    transition: background 2s ease;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .ambient__bg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    mix-blend-mode: overlay;
+    opacity: 0.4;
+    z-index: 1;
+  }
+
+  /* ── Nav ── */
+  .ambient__nav {
+    position: relative;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.25rem 1.5rem;
+  }
+
+  .ambient__back {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.8125rem;
+    color: var(--color-muted);
+    text-decoration: none;
+    transition: color 0.2s;
+    background: rgba(22, 22, 22, 0.6);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    padding: 0.35rem 0.7rem;
+  }
+  .ambient__back:hover { color: var(--color-text); }
+  .ambient__back svg { width: 13px; height: 13px; }
+
+  .ambient__fullscreen {
+    background: rgba(22, 22, 22, 0.6);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    padding: 0.35rem 0.5rem;
+    color: var(--color-muted);
+    cursor: pointer;
+    transition: color 0.2s, border-color 0.2s;
+    line-height: 0;
+  }
+  .ambient__fullscreen:hover { color: var(--color-text); border-color: var(--color-border-highlight); }
+  .ambient__fullscreen svg { width: 15px; height: 15px; }
+
+  /* ── Content ── */
+  .ambient__content {
+    position: relative;
+    z-index: 5;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: clamp(2rem, 6vw, 4rem);
+    gap: clamp(2.5rem, 5vw, 4rem);
+  }
+
+  /* ── Clock ── */
+  .ambient__clock {
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .ambient__city {
+    font-family: var(--font-body);
+    font-size: 0.75rem;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--color-muted);
+    margin: 0;
+  }
+
+  .ambient__time {
+    font-family: var(--font-display);
+    font-size: clamp(3.5rem, 12vw, 8rem);
+    font-weight: 400;
+    color: var(--color-text);
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .ambient__date {
+    font-family: var(--font-body);
+    font-size: 0.9375rem;
+    color: var(--color-muted);
+    margin: 0;
+  }
+
+  /* ── Lower row ── */
+  .ambient__lower {
+    width: 100%;
+    max-width: 52rem;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    align-items: start;
+  }
+
+  @media (max-width: 540px) {
+    .ambient__lower { grid-template-columns: 1fr; }
+  }
+
+  .ambient__music,
+  .ambient__weather {
+    background: rgba(22, 22, 22, 0.5);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--color-border);
+    border-radius: 12px;
+    padding: 1.25rem;
+  }
+
+  @media (prefers-color-scheme: light) {
+    .ambient__music, .ambient__weather {
+      background: rgba(237, 232, 223, 0.6);
+    }
+  }
+
+  .ambient__section-label {
+    font-family: var(--font-body);
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--color-muted);
+    margin: 0 0 0.875rem;
+  }
+
+  /* ── Skeletons ── */
+  .ambient__music-skeleton,
+  .ambient__weather-skeleton {
+    height: 56px;
+    border-radius: 8px;
+    background: var(--color-border);
+    animation: skeleton-pulse 1.5s ease-in-out infinite;
+  }
+
+  @keyframes skeleton-pulse {
+    0%, 100% { opacity: 0.4; }
+    50%       { opacity: 0.7; }
+  }
+
+  /* ── Track ── */
+  .ambient-track {
+    display: flex;
+    align-items: center;
+    gap: 0.875rem;
+    text-decoration: none;
+    color: inherit;
+  }
+  .ambient-track:hover .ambient-track__name { color: var(--color-accent); }
+
+  .ambient-track__art {
+    width: 56px;
+    height: 56px;
+    border-radius: 6px;
+    object-fit: cover;
+    flex-shrink: 0;
+  }
+
+  .ambient-track__info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+
+  .ambient-track__name {
+    font-size: 0.9375rem;
+    color: var(--color-text);
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: color 0.2s;
+  }
+
+  .ambient-track__artist {
+    font-size: 0.8125rem;
+    color: var(--color-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .ambient-track__progress {
+    height: 2px;
+    background: var(--color-border);
+    border-radius: 1px;
+    margin-top: 0.4rem;
+    overflow: hidden;
+  }
+
+  .ambient-track__bar {
+    height: 100%;
+    background: var(--color-accent);
+    border-radius: 1px;
+    transition: width 0.5s linear;
+  }
+
+  .ambient-track__status {
+    flex-shrink: 0;
+    align-self: center;
+  }
+
+  .ambient-track__idle {
+    font-size: 0.75rem;
+    color: var(--color-muted);
+  }
+
+  /* Equaliser bars */
+  .ambient-eq {
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 14px;
+  }
+  .ambient-eq span {
+    display: block;
+    width: 3px;
+    background: var(--color-accent);
+    border-radius: 1px;
+    animation: eq-bar 0.8s ease-in-out infinite alternate;
+  }
+  .ambient-eq span:nth-child(1) { animation-delay: 0s;    animation-duration: 0.7s; }
+  .ambient-eq span:nth-child(2) { animation-delay: 0.15s; animation-duration: 0.5s; }
+  .ambient-eq span:nth-child(3) { animation-delay: 0.08s; animation-duration: 0.9s; }
+
+  @keyframes eq-bar {
+    from { height: 3px;  }
+    to   { height: 14px; }
+  }
+
+  /* ── Weather ── */
+  .ambient-weather {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    grid-template-rows: auto auto;
+    column-gap: 0.75rem;
+    align-items: center;
+  }
+
+  .ambient-weather__icon {
+    grid-row: 1 / 3;
+    color: var(--color-muted);
+    line-height: 0;
+  }
+  .ambient-weather__icon svg { width: 36px; height: 36px; }
+
+  .ambient-weather__temp {
+    font-family: var(--font-display);
+    font-size: 1.625rem;
+    color: var(--color-text);
+    line-height: 1;
+  }
+
+  .ambient-weather__desc {
+    font-size: 0.8125rem;
+    color: var(--color-muted);
+  }
+
+  .ambient-weather__wind {
+    grid-column: 1 / -1;
+    font-size: 0.75rem;
+    color: var(--color-muted);
+    margin-top: 0.5rem;
+    opacity: 0.7;
+  }
+
+  .ambient-idle {
+    font-size: 0.875rem;
+    color: var(--color-muted);
+    margin: 0;
+  }
+</style>
