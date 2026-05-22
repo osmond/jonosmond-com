@@ -1,0 +1,245 @@
+---
+export const prerender = true;
+import Layout from '../../layouts/Layout.astro';
+import Footer from '../../components/Footer.astro';
+---
+
+<Layout
+  title="ASCII Field — Lab"
+  description="A noise flow field rendered entirely in ASCII characters."
+>
+  <main class="ascii-page">
+    <header class="ascii__header">
+      <a href="/lab" class="ascii__back">
+        <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M10 3L5 8l5 5" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        Lab
+      </a>
+      <span class="ascii__tag">Text</span>
+      <h1 class="ascii__title">ASCII Field</h1>
+      <p class="ascii__lead">A noise flow field rendered entirely in ASCII characters. Mouse shifts the current.</p>
+    </header>
+
+    <div class="ascii__stage" id="ascii-stage" aria-hidden="true">
+      <pre id="ascii-pre"></pre>
+    </div>
+
+    <div id="ascii-info" class="ascii__info">
+      <p>Move your mouse to shift the flow. Each character maps to a direction in the noise field.</p>
+      <button id="ascii-dismiss" class="ascii__dismiss">Got it</button>
+    </div>
+  </main>
+  <Footer />
+</Layout>
+
+<script>
+(function () {
+  const pre   = document.getElementById('ascii-pre') as HTMLPreElement;
+  const info  = document.getElementById('ascii-info') as HTMLDivElement;
+  const btn   = document.getElementById('ascii-dismiss') as HTMLButtonElement;
+  const stage = document.getElementById('ascii-stage') as HTMLDivElement;
+
+  btn.addEventListener('click', () => info.classList.add('ascii__info--hidden'));
+
+  // Characters ordered by visual "weight" / directionality
+  const CHARS = '·∘○◌◎●■▪▸▴▾◂▾⊕⊗'.split('');
+  const FLOW  = ['·', '╌', '─', '╌', '│', '╎', '│', '╎', '╱', '╲', '╱', '╲', '✦', '✧', '◆', '◇'];
+
+  // Gradient noise
+  const perm = new Uint8Array(512);
+  { const p = new Uint8Array(256);
+    for (let i = 0; i < 256; i++) p[i] = i;
+    for (let i = 255; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [p[i], p[j]] = [p[j], p[i]]; }
+    for (let i = 0; i < 512; i++) perm[i] = p[i & 255]; }
+
+  function fade(t: number) { return t * t * t * (t * (t * 6 - 15) + 10); }
+  function lerp(a: number, b: number, t: number) { return a + t * (b - a); }
+  function grad(h: number, x: number, y: number) { return ((h & 1) ? x : -x) + ((h & 2) ? y : -y); }
+  function noise(x: number, y: number) {
+    const xi = Math.floor(x) & 255, yi = Math.floor(y) & 255;
+    const xf = x - Math.floor(x), yf = y - Math.floor(y);
+    const u = fade(xf), v = fade(yf);
+    const aa = perm[perm[xi]+yi], ab = perm[perm[xi]+yi+1];
+    const ba = perm[perm[xi+1]+yi], bb = perm[perm[xi+1]+yi+1];
+    return lerp(lerp(grad(aa,xf,yf), grad(ba,xf-1,yf), u), lerp(grad(ab,xf,yf-1), grad(bb,xf-1,yf-1), u), v);
+  }
+
+  // Character dimensions (monospace)
+  const CHAR_W = 9, CHAR_H = 16;
+  let cols = 0, rows = 0;
+  let mx = 0.5, my = 0.5;
+  let t  = 0, raf = 0;
+
+  function calcGrid() {
+    cols = Math.floor(stage.clientWidth  / CHAR_W);
+    rows = Math.floor((stage.clientHeight - 4) / CHAR_H);
+  }
+  calcGrid();
+  window.addEventListener('resize', calcGrid);
+
+  stage.addEventListener('mousemove', (e: MouseEvent) => {
+    const r = stage.getBoundingClientRect();
+    mx = (e.clientX - r.left) / r.width;
+    my = (e.clientY - r.top)  / r.height;
+  });
+
+  function draw() {
+    t += 0.008;
+    const offX = (mx - 0.5) * 3;
+    const offY = (my - 0.5) * 3;
+    const lines: string[] = [];
+    for (let r = 0; r < rows; r++) {
+      let line = '';
+      for (let c = 0; c < cols; c++) {
+        const nx = c * 0.12 + offX + t;
+        const ny = r * 0.12 + offY + t * 0.5;
+        const n  = noise(nx, ny); // -1 to 1 ish
+        const angle = n * Math.PI * 2;
+        // Map angle to character bucket (16 directions)
+        const bucket = Math.floor(((angle / (Math.PI * 2) + 0.5) % 1) * FLOW.length);
+        // Magnitude: brightness of nearby noise layers
+        const mag = Math.abs(noise(nx * 2.1, ny * 2.1));
+        line += mag > 0.55 ? CHARS[Math.floor(mag * CHARS.length) % CHARS.length] : FLOW[bucket];
+      }
+      lines.push(line);
+    }
+    pre.textContent = lines.join('\n');
+    raf = requestAnimationFrame(draw);
+  }
+
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    const lines: string[] = [];
+    for (let r = 0; r < rows; r++) {
+      let line = '';
+      for (let c = 0; c < cols; c++) {
+        const n = noise(c * 0.12, r * 0.12);
+        const bucket = Math.floor(((n / (Math.PI * 2) + 0.5) % 1) * FLOW.length);
+        line += FLOW[bucket];
+      }
+      lines.push(line);
+    }
+    pre.textContent = lines.join('\n');
+  } else {
+    draw();
+  }
+
+  document.addEventListener('astro:before-swap', () => cancelAnimationFrame(raf), { once: true });
+})();
+</script>
+
+<style>
+  .ascii-page {
+    display: flex;
+    flex-direction: column;
+    min-height: 100svh;
+    padding: clamp(2rem, 6vw, 5rem);
+    padding-bottom: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  .ascii__back {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.8125rem;
+    color: var(--color-muted);
+    text-decoration: none;
+    transition: color 0.2s;
+    margin-bottom: 2rem;
+  }
+  .ascii__back:hover { color: var(--color-text); }
+  .ascii__back svg { width: 14px; height: 14px; }
+
+  .ascii__header { margin-bottom: 2rem; }
+
+  .ascii__tag {
+    display: inline-block;
+    font-family: var(--font-body);
+    font-size: 0.625rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--color-accent);
+    margin-bottom: 0.5rem;
+  }
+
+  .ascii__title {
+    font-family: var(--font-display);
+    font-size: clamp(2rem, 5vw, 3.5rem);
+    font-weight: 400;
+    color: var(--color-text);
+    margin: 0 0 0.75rem;
+    line-height: 1.05;
+  }
+
+  .ascii__lead {
+    font-family: var(--font-body);
+    font-size: 0.9375rem;
+    color: var(--color-muted);
+    margin: 0;
+    max-width: 48ch;
+  }
+
+  .ascii__stage {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+    margin: 0 calc(-1 * clamp(2rem, 6vw, 5rem));
+    padding: 0 clamp(2rem, 6vw, 5rem);
+    min-height: 400px;
+    cursor: crosshair;
+  }
+
+  #ascii-pre {
+    font-family: 'SFMono-Regular', 'Consolas', 'Liberation Mono', monospace;
+    font-size: 0.5625rem;
+    line-height: 1;
+    color: var(--color-muted);
+    margin: 0;
+    white-space: pre;
+    overflow: hidden;
+    user-select: none;
+    letter-spacing: 0.04em;
+  }
+
+  /* Info panel */
+  .ascii__info {
+    position: fixed;
+    bottom: 1.5rem;
+    left: 1.5rem;
+    max-width: 22rem;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border-highlight);
+    border-radius: 10px;
+    padding: 0.875rem 1rem;
+    z-index: 100;
+    transition: opacity 0.3s ease, transform 0.3s ease;
+  }
+  .ascii__info--hidden { opacity: 0; pointer-events: none; transform: translateY(6px); }
+  .ascii__info p {
+    font-family: var(--font-body);
+    font-size: 0.8125rem;
+    color: var(--color-muted);
+    margin: 0 0 0.6rem;
+    line-height: 1.55;
+  }
+  .ascii__dismiss {
+    font-family: var(--font-body);
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--color-muted);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0.2rem 0.4rem;
+    border-radius: 4px;
+    transition: color 0.15s, background 0.15s;
+  }
+  .ascii__dismiss:hover { color: var(--color-text); background: var(--color-border); }
+
+  @media (max-width: 480px) {
+    .ascii__info { left: 1rem; right: 1rem; max-width: none; bottom: 1rem; }
+  }
+</style>

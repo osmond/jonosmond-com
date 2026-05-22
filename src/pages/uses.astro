@@ -1,0 +1,174 @@
+---
+export const prerender = true;
+import Layout from '../layouts/Layout.astro';
+
+const hardware = [
+  { name: 'MacBook Pro 14" M3 Pro', note: 'Primary machine. 18GB unified memory.' },
+  { name: 'LG 27" 4K UltraFine', note: 'USB-C, 27MD5KL-B. Clean, no-frills.' },
+  { name: 'Keychron Q1 Pro', note: 'Wireless, QMK. Gateron G Pro 3.0 browns.' },
+  { name: 'Logitech MX Master 3S', note: 'The quiet click is worth every penny.' },
+  { name: 'Sony WH-1000XM5', note: 'ANC for focus. Too good at blocking the world.' },
+  { name: 'iPad mini 6', note: 'Reading, sketching, occasional Figma reference.' },
+];
+
+const software = [
+  { name: 'VS Code', note: 'With GitHub Copilot. Minimal extension footprint.' },
+  { name: 'Figma', note: 'Design, diagramming, light prototyping.' },
+  { name: 'Warp', note: 'Terminal. AI autocomplete without the cringe.' },
+  { name: 'Arc', note: 'Browser. The tab grouping changed how I work.' },
+  { name: 'Notion', note: 'Notes, project tracking, personal wiki.' },
+  { name: 'Raycast', note: 'Launcher + clipboard history + snippets. Replaces Spotlight.' },
+  { name: 'Reeder', note: 'RSS reader. My main filter on the internet.' },
+];
+
+const stack = [
+  { name: 'Astro', note: 'This site. Component islands + zero JS by default.' },
+  { name: 'TypeScript', note: 'Always. The DX gap from JS is too large to ignore.' },
+  { name: 'Tailwind CSS', note: 'v4 with CSS-native config. Much cleaner.' },
+  { name: 'Vercel', note: 'Deploy + edge functions. Instant deploys still feel like magic.' },
+  { name: 'Upstash Redis', note: 'Serverless KV for rate limiting and analytics.' },
+  { name: 'Cloudflare', note: 'DNS, always. Occasionally Workers for lightweight tasks.' },
+  { name: 'GitHub', note: 'Everything in version control, always.' },
+];
+---
+
+<Layout title="Uses — Jon Osmond" description="Hardware, software, and stack I use daily.">
+  <main class="uses">
+    <header class="uses__header">
+      <a href="/" class="back-link">← Home</a>
+      <p class="eyebrow">Uses</p>
+      <h1 class="uses__title">What I use</h1>
+      <p class="uses__sub">Hardware, software, and the stack I reach for on most projects.</p>
+    </header>
+
+    <section class="uses__section">
+      <h2 class="uses__section-title">Hardware</h2>
+      <ul class="uses__list" role="list">
+        {hardware.map(item => (
+          <li class="uses__item">
+            <span class="uses__item-name">{item.name}</span>
+            <span class="uses__item-note">{item.note}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+
+    <section class="uses__section">
+      <h2 class="uses__section-title">Software & Tools</h2>
+      <ul class="uses__list" role="list">
+        {software.map(item => (
+          <li class="uses__item">
+            <span class="uses__item-name">{item.name}</span>
+            <span class="uses__item-note">{item.note}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+
+    <section class="uses__section">
+      <h2 class="uses__section-title">Stack</h2>
+      <ul class="uses__list" role="list">
+        {stack.map(item => (
+          <li class="uses__item">
+            <span class="uses__item-name">{item.name}</span>
+            <span class="uses__item-note">{item.note}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+
+    <footer class="uses__footer">
+      <p>Updated May 2026. Things change. I try to keep this honest.</p>
+    </footer>
+  </main>
+</Layout>
+
+<style>
+  .uses {
+    padding: clamp(4rem, 8vw, 7rem) clamp(2rem, 6vw, 5rem);
+    max-width: 720px;
+    margin: 0 auto;
+  }
+  .uses__header { margin-bottom: 4rem; }
+  .back-link {
+    display: inline-block;
+    margin-bottom: 2rem;
+    font-size: 0.8125rem;
+    color: var(--color-muted);
+    text-decoration: none;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    padding: 0.35rem 0.7rem;
+    transition: color 0.2s;
+  }
+  .back-link:hover { color: var(--color-text); }
+  .eyebrow {
+    font-size: 0.75rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-muted);
+    margin-bottom: 0.75rem;
+  }
+  .uses__title {
+    font-family: var(--font-display);
+    font-size: clamp(2rem, 5vw, 3.5rem);
+    font-weight: 400;
+    line-height: 1.1;
+    margin-bottom: 0.75rem;
+  }
+  .uses__sub {
+    color: var(--color-muted);
+    font-size: 1rem;
+    line-height: 1.6;
+  }
+  .uses__section {
+    margin-bottom: 3.5rem;
+  }
+  .uses__section-title {
+    font-size: 0.75rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-accent);
+    margin-bottom: 1.25rem;
+  }
+  .uses__list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  .uses__item {
+    display: grid;
+    grid-template-columns: 1fr 1.5fr;
+    gap: 1.5rem;
+    padding: 0.9rem 0;
+    border-top: 1px solid var(--color-border);
+    align-items: baseline;
+  }
+  .uses__item:last-child { border-bottom: 1px solid var(--color-border); }
+  .uses__item-name {
+    font-size: 0.9375rem;
+    font-weight: 500;
+    color: var(--color-text);
+  }
+  .uses__item-note {
+    font-size: 0.875rem;
+    color: var(--color-muted);
+    line-height: 1.5;
+  }
+  @media (max-width: 540px) {
+    .uses__item {
+      grid-template-columns: 1fr;
+      gap: 0.25rem;
+    }
+  }
+  .uses__footer {
+    margin-top: 4rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--color-border);
+    font-size: 0.8rem;
+    color: var(--color-muted);
+  }
+</style>

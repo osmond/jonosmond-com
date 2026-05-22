@@ -32,6 +32,27 @@ const experiments = [
     desc:  'A grid of points held by springs. Click to deform — watch the oscillation decay.',
     preview: 'spring',
   },
+  {
+    slug:  'ascii',
+    tag:   'Text',
+    title: 'ASCII Field',
+    desc:  'A noise flow field rendered entirely in ASCII characters. Mouse shifts the current.',
+    preview: 'ascii',
+  },
+  {
+    slug:  'type',
+    tag:   'Typography',
+    title: 'Kinetic Type',
+    desc:  'Words orbit a gravitational centre and scatter on interaction.',
+    preview: 'type',
+  },
+  {
+    slug:  'cloth',
+    tag:   'Physics',
+    title: 'Cloth',
+    desc:  'Verlet integration cloth. Drag to grab, right-click to cut constraints.',
+    preview: 'cloth',
+  },
 ];
 ---
 
@@ -254,6 +275,154 @@ const experiments = [
     return () => { cancelAnimationFrame(raf); clearInterval(pokeId); };
   }
 
+  // ── ASCII preview ──────────────────────────────────────────────────────────
+  function initAscii(canvas: HTMLCanvasElement): () => void {
+    const { ctx, w, h } = setup(canvas);
+    const FLOW = ['·','╌','─','╌','│','╎','│','╎','╱','╲','╱','╲','✦','✧','◆','◇'];
+    const perm2 = new Uint8Array(512);
+    { const p2 = new Uint8Array(256);
+      for (let i = 0; i < 256; i++) p2[i] = i;
+      for (let i = 255; i > 0; i--) { const j = Math.floor(Math.random()*(i+1)); [p2[i], p2[j]] = [p2[j], p2[i]]; }
+      for (let i = 0; i < 512; i++) perm2[i] = p2[i & 255]; }
+    function fade2(t: number) { return t*t*t*(t*(t*6-15)+10); }
+    function lerp2(a: number, b: number, t: number) { return a+t*(b-a); }
+    function grad2(hh: number, x: number, y: number) { return ((hh&1)?x:-x)+((hh&2)?y:-y); }
+    function noise2(x: number, y: number) {
+      const xi=Math.floor(x)&255, yi=Math.floor(y)&255;
+      const xf=x-Math.floor(x), yf=y-Math.floor(y);
+      const u=fade2(xf), v=fade2(yf);
+      const aa=perm2[perm2[xi]+yi], ab=perm2[perm2[xi]+yi+1];
+      const ba=perm2[perm2[xi+1]+yi], bb=perm2[perm2[xi+1]+yi+1];
+      return lerp2(lerp2(grad2(aa,xf,yf),grad2(ba,xf-1,yf),u),lerp2(grad2(ab,xf,yf-1),grad2(bb,xf-1,yf-1),u),v);
+    }
+    const CHAR_W = 7, CHAR_H = 12;
+    const cols2 = Math.floor(w / CHAR_W), rows2 = Math.floor(h / CHAR_H);
+    let t2 = 0, raf = 0;
+    ctx.font = `500 10px monospace`;
+    ctx.textBaseline = 'top';
+    function draw2() {
+      t2 += 0.01;
+      ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = isDark ? 'rgba(136,136,132,0.55)' : 'rgba(136,136,132,0.5)';
+      for (let r = 0; r < rows2; r++) {
+        for (let c = 0; c < cols2; c++) {
+          const n = noise2(c * 0.15 + t2, r * 0.15 + t2 * 0.5);
+          const bucket = Math.floor(((n / (Math.PI*2) + 0.5) % 1) * FLOW.length);
+          const ch = FLOW[bucket < 0 ? 0 : bucket];
+          ctx.fillText(ch, c * CHAR_W, r * CHAR_H);
+        }
+      }
+      // Accent hotspot
+      const hx = (Math.sin(t2 * 0.7) * 0.3 + 0.5) * cols2;
+      const hy = (Math.cos(t2 * 0.5) * 0.3 + 0.5) * rows2;
+      ctx.fillStyle = accent;
+      for (let r = -2; r <= 2; r++) {
+        for (let c = -2; c <= 2; c++) {
+          const rc = Math.round(hx + c), rr = Math.round(hy + r);
+          if (rc < 0 || rc >= cols2 || rr < 0 || rr >= rows2) continue;
+          const n = noise2(rc * 0.15 + t2, rr * 0.15 + t2 * 0.5);
+          const bucket = Math.floor(((n / (Math.PI*2) + 0.5) % 1) * FLOW.length);
+          ctx.fillText(FLOW[bucket < 0 ? 0 : bucket], rc * CHAR_W, rr * CHAR_H);
+        }
+      }
+      raf = requestAnimationFrame(draw2);
+    }
+    draw2();
+    return () => cancelAnimationFrame(raf);
+  }
+
+  // ── Type preview ───────────────────────────────────────────────────────────
+  function initType(canvas: HTMLCanvasElement): () => void {
+    const { ctx, w, h } = setup(canvas);
+    const words = ['interface','design','motion','system','craft','rhythm','signal','form'];
+    const pts2 = words.map((word, i) => {
+      const angle2 = (i / words.length) * Math.PI * 2;
+      const r2 = Math.min(w, h) * 0.3;
+      return { word, x: w/2 + Math.cos(angle2)*r2, y: h/2 + Math.sin(angle2)*r2,
+               vx: 0, vy: 0, angle2, r2,
+               speed: 0.008 * (i % 2 ? 1 : -1),
+               size: i % 3 === 0 ? 11 : 9 };
+    });
+    let raf = 0;
+    function draw3() {
+      ctx.clearRect(0, 0, w, h);
+      ctx.strokeStyle = isDark ? 'rgba(245,244,240,0.05)' : 'rgba(26,23,20,0.05)';
+      ctx.lineWidth = 0.5;
+      ctx.beginPath(); ctx.arc(w/2, h/2, Math.min(w,h)*0.3, 0, Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(w/2, h/2, 2, 0, Math.PI*2);
+      ctx.fillStyle = accent; ctx.fill();
+      for (const p of pts2) {
+        p.angle2 += p.speed;
+        p.x = w/2 + Math.cos(p.angle2)*p.r2;
+        p.y = h/2 + Math.sin(p.angle2)*p.r2;
+        ctx.font = `400 ${p.size}px var(--font-body,sans-serif)`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillStyle = isDark ? 'rgba(136,136,132,0.7)' : 'rgba(136,136,132,0.8)';
+        ctx.fillText(p.word, p.x, p.y);
+      }
+      raf = requestAnimationFrame(draw3);
+    }
+    draw3();
+    return () => cancelAnimationFrame(raf);
+  }
+
+  // ── Cloth preview ──────────────────────────────────────────────────────────
+  function initCloth(canvas: HTMLCanvasElement): () => void {
+    const { ctx, w, h } = setup(canvas);
+    const COLS2 = 14, ROWS2 = 9;
+    const sX = w * 0.7 / COLS2, sY = sX;
+    const startX = (w - sX*(COLS2-1))/2, startY = h*0.08;
+    const pts3: {x:number;y:number;px:number;py:number;pinned:boolean}[] = [];
+    for (let r=0;r<ROWS2;r++) for (let c=0;c<COLS2;c++) {
+      const x=startX+c*sX, y=startY+r*sY;
+      pts3.push({x,y,px:x,py:y,pinned:r===0&&c%3===0});
+    }
+    const cons2: {p0:typeof pts3[0];p1:typeof pts3[0];rest:number;active:boolean}[] = [];
+    const idx2=(r:number,c:number)=>r*COLS2+c;
+    for (let r=0;r<ROWS2;r++) for (let c=0;c<COLS2;c++) {
+      if (c<COLS2-1) cons2.push({p0:pts3[idx2(r,c)],p1:pts3[idx2(r,c+1)],rest:sX,active:true});
+      if (r<ROWS2-1) cons2.push({p0:pts3[idx2(r,c)],p1:pts3[idx2(r+1,c)],rest:sY,active:true});
+    }
+    let raf = 0, tickN = 0;
+    function poke2() {
+      const ri = Math.floor(Math.random()*(ROWS2-1))+1;
+      const ci = Math.floor(Math.random()*COLS2);
+      pts3[idx2(ri,ci)].vx += (Math.random()-0.5)*6;
+    }
+    poke2();
+    function draw4() {
+      tickN++;
+      if (tickN % 90 === 0) poke2();
+      for (const p of pts3) {
+        if (p.pinned) continue;
+        const vx=(p.x-p.px)*0.99, vy=(p.y-p.py)*0.99;
+        p.px=p.x; p.py=p.y; p.x+=vx; p.y+=vy+0.35;
+        if (p.y>h) { p.y=h; p.py=p.y+vy*0.3; }
+      }
+      for (let it=0;it<3;it++) for (const c of cons2) {
+        if (!c.active) continue;
+        const dx=c.p1.x-c.p0.x, dy=c.p1.y-c.p0.y, d=Math.hypot(dx,dy)||0.001;
+        if (d>sX*3.5){c.active=false;continue;}
+        const diff=(d-c.rest)/d*0.5;
+        const ox=dx*diff, oy=dy*diff;
+        if (!c.p0.pinned){c.p0.x+=ox;c.p0.y+=oy;}
+        if (!c.p1.pinned){c.p1.x-=ox;c.p1.y-=oy;}
+      }
+      ctx.clearRect(0,0,w,h);
+      ctx.strokeStyle = isDark ? 'rgba(245,244,240,0.3)' : 'rgba(26,23,20,0.25)';
+      ctx.lineWidth=0.7;
+      for (const c of cons2) {
+        if(!c.active) continue;
+        ctx.beginPath(); ctx.moveTo(c.p0.x,c.p0.y); ctx.lineTo(c.p1.x,c.p1.y); ctx.stroke();
+      }
+      ctx.fillStyle = accent;
+      for (const p of pts3) { if(!p.pinned) continue; ctx.beginPath(); ctx.arc(p.x,p.y,2,0,Math.PI*2); ctx.fill(); }
+      raf = requestAnimationFrame(draw4);
+    }
+    draw4();
+    return () => cancelAnimationFrame(raf);
+  }
+
   const cleanups: Array<() => void> = [];
   document.querySelectorAll<HTMLCanvasElement>('.lab__canvas').forEach(canvas => {
     const t = canvas.dataset.preview;
@@ -261,6 +430,9 @@ const experiments = [
     if (t === 'voronoi') cleanups.push(initVoronoi(canvas));
     if (t === 'trails')  cleanups.push(initTrails(canvas));
     if (t === 'spring')  cleanups.push(initSpring(canvas));
+    if (t === 'ascii')   cleanups.push(initAscii(canvas));
+    if (t === 'type')    cleanups.push(initType(canvas));
+    if (t === 'cloth')   cleanups.push(initCloth(canvas));
   });
   document.addEventListener('astro:before-swap', () => cleanups.forEach(fn => fn()), { once: true });
 </script>

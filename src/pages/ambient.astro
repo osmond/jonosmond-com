@@ -19,11 +19,19 @@ import Layout from '../layouts/Layout.astro';
         </svg>
         Experiments
       </a>
-      <button class="ambient__fullscreen" id="fullscreen-btn" aria-label="Enter fullscreen" title="Enter fullscreen">
-        <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
-          <path d="M2 5V2h3M11 2h3v3M14 11v3h-3M5 14H2v-3" stroke-linecap="round" stroke-linejoin="round" />
-        </svg>
-      </button>
+      <div class="ambient__nav-right">
+        <button class="ambient__audio" id="audio-btn" aria-label="Enable ambient drone" title="Toggle ambient drone" data-on="false">
+          <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path class="audio-icon-off" d="M3 6H1v4h2l4 3V3L3 6ZM13 5l-4 6M9 5l4 6" stroke-linecap="round" stroke-linejoin="round"/>
+            <path class="audio-icon-on" d="M3 6H1v4h2l4 3V3L3 6ZM10 6a3 3 0 0 1 0 4M12.5 4a6 6 0 0 1 0 8" stroke-linecap="round" stroke-linejoin="round" style="display:none"/>
+          </svg>
+        </button>
+        <button class="ambient__fullscreen" id="fullscreen-btn" aria-label="Enter fullscreen" title="Enter fullscreen">
+          <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M2 5V2h3M11 2h3v3M14 11v3h-3M5 14H2v-3" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </button>
+      </div>
     </nav>
 
     <!-- Content -->
@@ -265,6 +273,81 @@ import Layout from '../layouts/Layout.astro';
     });
   }
 
+  // ─── Ambient drone (Web Audio) ─────────────────────────────────────────────
+  (function () {
+    const btn = document.getElementById('audio-btn') as HTMLButtonElement | null;
+    if (!btn) return;
+
+    let ctx: AudioContext | null = null;
+    let masterGain: GainNode | null = null;
+    let running = false;
+
+    function buildDrone(audioCtx: AudioContext, gain: GainNode) {
+      const now = audioCtx.currentTime;
+      // Fundamental + 2 harmonics, slightly detuned for warmth
+      const freqs = [55, 110, 165.1];
+      freqs.forEach((freq, i) => {
+        const osc = audioCtx.createOscillator();
+        osc.type = i === 0 ? 'sine' : 'triangle';
+        osc.frequency.setValueAtTime(freq, now);
+        // Slow subtle detune drift
+        osc.detune.setValueAtTime(0, now);
+        osc.detune.linearRampToValueAtTime(8, now + 12);
+        osc.detune.linearRampToValueAtTime(-5, now + 26);
+        osc.detune.linearRampToValueAtTime(3, now + 40);
+
+        const oscGain = audioCtx.createGain();
+        oscGain.gain.setValueAtTime(i === 0 ? 0.18 : 0.06, now);
+
+        const filter = audioCtx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(800, now);
+        filter.Q.setValueAtTime(0.8, now);
+
+        osc.connect(filter);
+        filter.connect(oscGain);
+        oscGain.connect(gain);
+        osc.start(now);
+      });
+    }
+
+    function start() {
+      if (running) return;
+      running = true;
+      ctx = new AudioContext();
+      masterGain = ctx.createGain();
+      masterGain.gain.setValueAtTime(0, ctx.currentTime);
+      masterGain.gain.linearRampToValueAtTime(0.35, ctx.currentTime + 2);
+      masterGain.connect(ctx.destination);
+      buildDrone(ctx, masterGain);
+      updateIcon(true);
+    }
+
+    function stop() {
+      if (!running || !ctx || !masterGain) return;
+      const fadeOut = ctx.currentTime;
+      masterGain.gain.setValueAtTime(masterGain.gain.value, fadeOut);
+      masterGain.gain.linearRampToValueAtTime(0, fadeOut + 1.5);
+      setTimeout(() => { ctx?.close(); ctx = null; masterGain = null; running = false; }, 1600);
+      updateIcon(false);
+    }
+
+    function updateIcon(on: boolean) {
+      btn!.dataset.on = String(on);
+      btn!.setAttribute('aria-label', on ? 'Disable ambient drone' : 'Enable ambient drone');
+      btn!.querySelector<SVGPathElement>('.audio-icon-off')!.style.display = on ? 'none' : '';
+      btn!.querySelector<SVGPathElement>('.audio-icon-on')!.style.display  = on ? '' : 'none';
+    }
+
+    btn.addEventListener('click', () => {
+      if (running) { stop(); } else { start(); }
+    });
+
+    document.addEventListener('astro:before-swap', () => {
+      if (running) { stop(); }
+    }, { once: true });
+  })();
+
   // ─── Boot ──────────────────────────────────────────────────────────────────
   loadSpotify(true);
   loadWeather();
@@ -358,6 +441,27 @@ import Layout from '../layouts/Layout.astro';
   }
   .ambient__fullscreen:hover { color: var(--color-text); border-color: var(--color-border-highlight); }
   .ambient__fullscreen svg { width: 15px; height: 15px; }
+
+  .ambient__nav-right {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .ambient__audio {
+    background: rgba(22, 22, 22, 0.6);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    padding: 0.35rem 0.5rem;
+    color: var(--color-muted);
+    cursor: pointer;
+    transition: color 0.2s, border-color 0.2s;
+    line-height: 0;
+  }
+  .ambient__audio:hover { color: var(--color-text); border-color: var(--color-border-highlight); }
+  .ambient__audio[data-on="true"] { color: var(--color-accent); border-color: var(--color-accent); }
+  .ambient__audio svg { width: 15px; height: 15px; }
 
   /* ── Content ── */
   .ambient__content {

@@ -1,0 +1,274 @@
+---
+export const prerender = true;
+import Layout from '../../layouts/Layout.astro';
+import Footer from '../../components/Footer.astro';
+---
+
+<Layout
+  title="Kinetic Type — Lab"
+  description="Words that orbit, collide, and reassemble on canvas."
+>
+  <main class="type-page">
+    <header class="type__header">
+      <a href="/lab" class="type__back">
+        <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M10 3L5 8l5 5" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        Lab
+      </a>
+      <span class="type__tag">Typography</span>
+      <h1 class="type__title">Kinetic Type</h1>
+      <p class="type__lead">Words orbit a gravitational centre and scatter on interaction. Click to attract. Right-click to repel.</p>
+    </header>
+
+    <canvas id="type-canvas" aria-hidden="true"></canvas>
+  </main>
+  <Footer />
+</Layout>
+
+<script>
+(function () {
+  const canvas = document.getElementById('type-canvas') as HTMLCanvasElement;
+  const ctx    = canvas.getContext('2d')!;
+  const dpr    = Math.min(window.devicePixelRatio || 1, 2);
+  const isDark = !window.matchMedia('(prefers-color-scheme: light)').matches;
+
+  const textColor  = isDark ? '#f5f4f0' : '#1a1714';
+  const mutedColor = isDark ? '#888884' : '#888884';
+  const accentColor = isDark ? '#c46b4b' : '#a04525';
+
+  function resize() {
+    canvas.width  = canvas.offsetWidth  * dpr;
+    canvas.height = canvas.offsetHeight * dpr;
+    ctx.scale(dpr, dpr);
+  }
+  resize();
+  window.addEventListener('resize', () => { ctx.resetTransform(); resize(); buildParticles(); });
+
+  const WORDS = [
+    'interface', 'design', 'motion', 'system', 'craft',
+    'rhythm', 'signal', 'colour', 'form', 'space',
+    'type', 'grid', 'loop', 'wave', 'edge',
+    'noise', 'spring', 'force', 'flow', 'light',
+  ];
+
+  interface WordParticle {
+    word: string;
+    x: number; y: number;
+    vx: number; vy: number;
+    ox: number; oy: number; // orbit origin
+    angle: number;
+    radius: number;
+    speed: number;
+    size: number;
+    alpha: number;
+    targetAlpha: number;
+    weight: number; // font-weight 300/400/600
+  }
+
+  let particles: WordParticle[] = [];
+
+  function W() { return canvas.offsetWidth; }
+  function H() { return canvas.offsetHeight; }
+
+  function buildParticles() {
+    particles = WORDS.map((word, i) => {
+      const angle  = (i / WORDS.length) * Math.PI * 2;
+      const radius = W() * (0.18 + Math.random() * 0.22);
+      const cx = W() / 2, cy = H() / 2;
+      const x  = cx + Math.cos(angle) * radius;
+      const y  = cy + Math.sin(angle) * radius;
+      return {
+        word, x, y, vx: 0, vy: 0,
+        ox: cx, oy: cy,
+        angle,
+        radius,
+        speed: (Math.random() * 0.003 + 0.001) * (Math.random() < 0.5 ? 1 : -1),
+        size: Math.floor(Math.random() * 3) * 4 + 11, // 11, 15, 19
+        alpha: 0,
+        targetAlpha: 0.55 + Math.random() * 0.4,
+        weight: [300, 400, 600][Math.floor(Math.random() * 3)],
+      };
+    });
+    // Fade in staggered
+    particles.forEach((p, i) => {
+      setTimeout(() => { p.targetAlpha = 0.55 + Math.random() * 0.4; }, i * 80 + 200);
+    });
+  }
+  buildParticles();
+
+  let mouseX = W() / 2, mouseY = H() / 2;
+  let attract = false, repel = false;
+
+  canvas.addEventListener('mousemove', (e: MouseEvent) => {
+    const r = canvas.getBoundingClientRect();
+    mouseX = e.clientX - r.left;
+    mouseY = e.clientY - r.top;
+  });
+  canvas.addEventListener('mousedown', (e: MouseEvent) => {
+    e.preventDefault();
+    if (e.button === 2) repel = true;
+    else attract = true;
+  });
+  canvas.addEventListener('mouseup',   () => { attract = false; repel = false; });
+  canvas.addEventListener('contextmenu', (e: Event) => e.preventDefault());
+
+  // Touch support
+  canvas.addEventListener('touchmove', (e: TouchEvent) => {
+    e.preventDefault();
+    const r = canvas.getBoundingClientRect();
+    mouseX = e.touches[0].clientX - r.left;
+    mouseY = e.touches[0].clientY - r.top;
+  }, { passive: false });
+  canvas.addEventListener('touchstart', () => { attract = true; });
+  canvas.addEventListener('touchend',   () => { attract = false; });
+
+  let t = 0, raf = 0;
+
+  function draw() {
+    t += 1;
+    ctx.clearRect(0, 0, W(), H());
+
+    // Draw faint orbit rings
+    ctx.strokeStyle = isDark ? 'rgba(245,244,240,0.04)' : 'rgba(26,23,20,0.04)';
+    ctx.lineWidth = 1;
+    for (let r = 0.2; r <= 0.45; r += 0.12) {
+      ctx.beginPath();
+      ctx.arc(W() / 2, H() / 2, W() * r, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // Centre dot
+    ctx.beginPath();
+    ctx.arc(W() / 2, H() / 2, 3, 0, Math.PI * 2);
+    ctx.fillStyle = accentColor;
+    ctx.fill();
+
+    for (const p of particles) {
+      // Orbit
+      p.angle += p.speed;
+      const targetX = p.ox + Math.cos(p.angle) * p.radius;
+      const targetY = p.oy + Math.sin(p.angle) * p.radius;
+
+      // Mouse interaction
+      const dx = mouseX - p.x, dy = mouseY - p.y;
+      const dist = Math.hypot(dx, dy);
+      if (attract && dist < 200) {
+        p.vx += (dx / dist) * (3 - dist / 80);
+        p.vy += (dy / dist) * (3 - dist / 80);
+      } else if (repel && dist < 200) {
+        p.vx -= (dx / dist) * (3 - dist / 80);
+        p.vy -= (dy / dist) * (3 - dist / 80);
+      }
+
+      // Spring back to orbit
+      p.vx += (targetX - p.x) * 0.04;
+      p.vy += (targetY - p.y) * 0.04;
+      p.vx *= 0.88; p.vy *= 0.88;
+      p.x += p.vx; p.y += p.vy;
+
+      // Alpha fade in
+      p.alpha += (p.targetAlpha - p.alpha) * 0.06;
+
+      ctx.save();
+      ctx.globalAlpha = p.alpha;
+      ctx.font = `${p.weight} ${p.size}px var(--font-body, Inter, sans-serif)`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      // Highlight word near mouse
+      const nearMouse = dist < 50;
+      ctx.fillStyle = nearMouse ? accentColor : (p.size >= 19 ? textColor : mutedColor);
+      if (nearMouse) ctx.globalAlpha = Math.min(p.alpha * 1.8, 1);
+
+      ctx.fillText(p.word, p.x, p.y);
+      ctx.restore();
+    }
+
+    raf = requestAnimationFrame(draw);
+  }
+
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    particles.forEach(p => { p.alpha = p.targetAlpha; });
+    ctx.clearRect(0, 0, W(), H());
+    for (const p of particles) {
+      ctx.globalAlpha = p.alpha;
+      ctx.font = `${p.weight} ${p.size}px var(--font-body, Inter, sans-serif)`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillStyle = mutedColor;
+      ctx.fillText(p.word, p.x, p.y);
+    }
+    ctx.globalAlpha = 1;
+  } else {
+    draw();
+  }
+
+  document.addEventListener('astro:before-swap', () => cancelAnimationFrame(raf), { once: true });
+})();
+</script>
+
+<style>
+  .type-page {
+    display: flex;
+    flex-direction: column;
+    min-height: 100svh;
+    overflow: hidden;
+  }
+
+  .type__header {
+    padding: clamp(2rem, 6vw, 5rem);
+    padding-bottom: 1.5rem;
+    position: relative;
+    z-index: 1;
+  }
+
+  .type__back {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.8125rem;
+    color: var(--color-muted);
+    text-decoration: none;
+    transition: color 0.2s;
+    margin-bottom: 2rem;
+  }
+  .type__back:hover { color: var(--color-text); }
+  .type__back svg { width: 14px; height: 14px; }
+
+  .type__tag {
+    display: inline-block;
+    font-family: var(--font-body);
+    font-size: 0.625rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--color-accent);
+    margin-bottom: 0.5rem;
+  }
+
+  .type__title {
+    font-family: var(--font-display);
+    font-size: clamp(2rem, 5vw, 3.5rem);
+    font-weight: 400;
+    color: var(--color-text);
+    margin: 0 0 0.75rem;
+    line-height: 1.05;
+  }
+
+  .type__lead {
+    font-family: var(--font-body);
+    font-size: 0.9375rem;
+    color: var(--color-muted);
+    margin: 0;
+    max-width: 52ch;
+  }
+
+  #type-canvas {
+    flex: 1;
+    width: 100%;
+    min-height: 480px;
+    display: block;
+    cursor: crosshair;
+    touch-action: none;
+  }
+</style>

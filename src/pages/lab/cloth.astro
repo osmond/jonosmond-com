@@ -1,0 +1,296 @@
+---
+export const prerender = true;
+import Layout from '../../layouts/Layout.astro';
+import Footer from '../../components/Footer.astro';
+---
+
+<Layout
+  title="Cloth — Lab"
+  description="Verlet integration cloth simulation. Drag to tear, click to pin."
+>
+  <main class="cloth-page">
+    <header class="cloth__header">
+      <a href="/lab" class="cloth__back">
+        <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M10 3L5 8l5 5" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        Lab
+      </a>
+      <span class="cloth__tag">Physics</span>
+      <h1 class="cloth__title">Cloth</h1>
+      <p class="cloth__lead">Verlet integration cloth. Click &amp; drag to grab. Right-click (or long-press) to cut.</p>
+    </header>
+
+    <canvas id="cloth-canvas" aria-hidden="true"></canvas>
+  </main>
+  <Footer />
+</Layout>
+
+<script>
+(function () {
+  const canvas = document.getElementById('cloth-canvas') as HTMLCanvasElement;
+  const ctx    = canvas.getContext('2d')!;
+  const dpr    = Math.min(window.devicePixelRatio || 1, 2);
+  const isDark = !window.matchMedia('(prefers-color-scheme: light)').matches;
+
+  function resize() {
+    canvas.width  = canvas.offsetWidth  * dpr;
+    canvas.height = canvas.offsetHeight * dpr;
+    canvas.style.width  = canvas.offsetWidth  + 'px';
+    canvas.style.height = canvas.offsetHeight + 'px';
+    ctx.scale(dpr, dpr);
+  }
+  resize();
+  window.addEventListener('resize', () => { ctx.resetTransform(); resize(); buildCloth(); });
+
+  const W = () => canvas.offsetWidth;
+  const H = () => canvas.offsetHeight;
+
+  const COLS   = 30;
+  const ROWS   = 20;
+  const GRAVITY = 0.5;
+  const DRAG   = 0.99;
+  const STIFFNESS = 1;
+  const TEAR_DIST = 80; // constraint break distance
+
+  interface Point {
+    x: number; y: number;
+    px: number; py: number; // previous position (Verlet)
+    pinned: boolean;
+  }
+  interface Constraint { p0: Point; p1: Point; rest: number; active: boolean; }
+
+  let points: Point[] = [];
+  let constraints: Constraint[] = [];
+
+  function buildCloth() {
+    points = [];
+    constraints = [];
+    const spacingX = Math.min(W() * 0.7 / COLS, 22);
+    const spacingY = spacingX;
+    const startX = (W() - spacingX * (COLS - 1)) / 2;
+    const startY = H() * 0.08;
+
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const x = startX + c * spacingX;
+        const y = startY + r * spacingY;
+        points.push({ x, y, px: x, py: y, pinned: r === 0 && c % 3 === 0 });
+      }
+    }
+
+    const idx = (r: number, c: number) => r * COLS + c;
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        if (c < COLS - 1) constraints.push({ p0: points[idx(r,c)], p1: points[idx(r,c+1)], rest: spacingX, active: true });
+        if (r < ROWS - 1) constraints.push({ p0: points[idx(r,c)], p1: points[idx(r+1,c)], rest: spacingY, active: true });
+      }
+    }
+  }
+  buildCloth();
+
+  // ── Mouse / touch interaction ──────────────────────────────────────────────
+  let dragPoint: Point | null = null;
+  let cutting = false;
+
+  function getPos(e: MouseEvent | Touch) {
+    const r = canvas.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  }
+
+  function nearestPoint(x: number, y: number, maxDist = 20): Point | null {
+    let best: Point | null = null, bestD = maxDist;
+    for (const p of points) {
+      const d = Math.hypot(p.x - x, p.y - y);
+      if (d < bestD) { bestD = d; best = p; }
+    }
+    return best;
+  }
+
+  function cut(x: number, y: number) {
+    // Deactivate constraints near cursor
+    for (const c of constraints) {
+      const mx = (c.p0.x + c.p1.x) / 2;
+      const my = (c.p0.y + c.p1.y) / 2;
+      if (Math.hypot(mx - x, my - y) < 18) c.active = false;
+    }
+  }
+
+  canvas.addEventListener('mousedown', (e: MouseEvent) => {
+    const { x, y } = getPos(e);
+    if (e.button === 2) { cutting = true; cut(x, y); return; }
+    dragPoint = nearestPoint(x, y);
+    if (dragPoint) dragPoint.pinned = false;
+  });
+  canvas.addEventListener('mousemove', (e: MouseEvent) => {
+    const { x, y } = getPos(e);
+    if (cutting) { cut(x, y); return; }
+    if (dragPoint) { dragPoint.x = x; dragPoint.y = y; dragPoint.px = x; dragPoint.py = y; }
+  });
+  canvas.addEventListener('mouseup',    () => { dragPoint = null; cutting = false; });
+  canvas.addEventListener('contextmenu', (e: Event) => e.preventDefault());
+
+  let touchCutTimer = 0;
+  canvas.addEventListener('touchstart', (e: TouchEvent) => {
+    e.preventDefault();
+    const t = e.touches[0];
+    const { x, y } = getPos(t);
+    dragPoint = nearestPoint(x, y, 30);
+    if (dragPoint) dragPoint.pinned = false;
+    touchCutTimer = window.setTimeout(() => { cutting = true; cut(x, y); dragPoint = null; }, 500);
+  }, { passive: false });
+  canvas.addEventListener('touchmove', (e: TouchEvent) => {
+    e.preventDefault();
+    const t = e.touches[0];
+    const { x, y } = getPos(t);
+    clearTimeout(touchCutTimer);
+    if (cutting) { cut(x, y); return; }
+    if (dragPoint) { dragPoint.x = x; dragPoint.y = y; dragPoint.px = x; dragPoint.py = y; }
+  }, { passive: false });
+  canvas.addEventListener('touchend', () => { clearTimeout(touchCutTimer); dragPoint = null; cutting = false; });
+
+  // ── Physics ─────────────────────────────────────────────────────────────────
+  const ITERS = 5;
+
+  function update() {
+    for (const p of points) {
+      if (p.pinned) continue;
+      const vx = (p.x - p.px) * DRAG;
+      const vy = (p.y - p.py) * DRAG;
+      p.px = p.x; p.py = p.y;
+      p.x += vx;
+      p.y += vy + GRAVITY;
+      // Floor bounce
+      if (p.y > H() - 2) { p.y = H() - 2; p.py = p.y + vy * 0.3; }
+    }
+    // Satisfy constraints
+    for (let iter = 0; iter < ITERS; iter++) {
+      for (const c of constraints) {
+        if (!c.active) continue;
+        const dx = c.p1.x - c.p0.x;
+        const dy = c.p1.y - c.p0.y;
+        const dist = Math.hypot(dx, dy) || 0.001;
+        if (dist > TEAR_DIST) { c.active = false; continue; }
+        const diff = (dist - c.rest) / dist * STIFFNESS * 0.5;
+        const ox = dx * diff, oy = dy * diff;
+        if (!c.p0.pinned) { c.p0.x += ox; c.p0.y += oy; }
+        if (!c.p1.pinned) { c.p1.x -= ox; c.p1.y -= oy; }
+      }
+    }
+  }
+
+  // ── Render ───────────────────────────────────────────────────────────────────
+  function drawFrame() {
+    ctx.clearRect(0, 0, W(), H());
+    const lineColor  = isDark ? 'rgba(245,244,240,0.35)' : 'rgba(26,23,20,0.3)';
+    const pinColor   = isDark ? '#c46b4b' : '#a04525';
+
+    ctx.strokeStyle = lineColor;
+    ctx.lineWidth   = 0.8;
+    ctx.lineCap     = 'round';
+
+    for (const c of constraints) {
+      if (!c.active) continue;
+      const stretch = Math.hypot(c.p1.x - c.p0.x, c.p1.y - c.p0.y) / c.rest;
+      if (stretch > 1.3) {
+        const alpha = Math.min((stretch - 1.3) / 0.5, 1);
+        ctx.strokeStyle = `rgba(196,107,75,${0.35 + alpha * 0.5})`;
+      } else {
+        ctx.strokeStyle = lineColor;
+      }
+      ctx.beginPath();
+      ctx.moveTo(c.p0.x, c.p0.y);
+      ctx.lineTo(c.p1.x, c.p1.y);
+      ctx.stroke();
+    }
+
+    for (const p of points) {
+      if (!p.pinned) continue;
+      ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+      ctx.fillStyle = pinColor; ctx.fill();
+    }
+  }
+
+  let raf = 0;
+  function loop() {
+    update();
+    drawFrame();
+    raf = requestAnimationFrame(loop);
+  }
+
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    drawFrame();
+  } else {
+    loop();
+  }
+
+  document.addEventListener('astro:before-swap', () => cancelAnimationFrame(raf), { once: true });
+})();
+</script>
+
+<style>
+  .cloth-page {
+    display: flex;
+    flex-direction: column;
+    min-height: 100svh;
+    overflow: hidden;
+  }
+
+  .cloth__header {
+    padding: clamp(2rem, 6vw, 5rem);
+    padding-bottom: 1.5rem;
+    position: relative;
+    z-index: 1;
+  }
+
+  .cloth__back {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.8125rem;
+    color: var(--color-muted);
+    text-decoration: none;
+    transition: color 0.2s;
+    margin-bottom: 2rem;
+  }
+  .cloth__back:hover { color: var(--color-text); }
+  .cloth__back svg { width: 14px; height: 14px; }
+
+  .cloth__tag {
+    display: inline-block;
+    font-family: var(--font-body);
+    font-size: 0.625rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--color-accent);
+    margin-bottom: 0.5rem;
+  }
+
+  .cloth__title {
+    font-family: var(--font-display);
+    font-size: clamp(2rem, 5vw, 3.5rem);
+    font-weight: 400;
+    color: var(--color-text);
+    margin: 0 0 0.75rem;
+    line-height: 1.05;
+  }
+
+  .cloth__lead {
+    font-family: var(--font-body);
+    font-size: 0.9375rem;
+    color: var(--color-muted);
+    margin: 0;
+    max-width: 52ch;
+  }
+
+  #cloth-canvas {
+    flex: 1;
+    width: 100%;
+    min-height: 480px;
+    display: block;
+    cursor: grab;
+    touch-action: none;
+  }
+  #cloth-canvas:active { cursor: grabbing; }
+</style>

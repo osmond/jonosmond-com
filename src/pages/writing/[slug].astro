@@ -1,0 +1,164 @@
+---
+export const prerender = true;
+import type { GetStaticPaths } from 'astro';
+import { getCollection, render } from 'astro:content';
+import Layout from '../../layouts/Layout.astro';
+
+export const getStaticPaths: GetStaticPaths = async () => {
+  const posts = await getCollection('writing', e => !e.data.draft);
+  return posts.map(post => ({ params: { slug: post.id }, props: { post } }));
+};
+
+const { post } = Astro.props;
+const { Content } = await render(post);
+const dateStr = post.data.date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+---
+
+<Layout title={`${post.data.title} — Jon Osmond`} description={post.data.description}>
+  <main class="post">
+    <nav class="post__nav">
+      <a href="/writing" class="back-link">← Writing</a>
+    </nav>
+
+    <header class="post__header">
+      {post.data.tags.length > 0 && (
+        <ul class="post__tags" role="list">
+          {post.data.tags.map(tag => <li class="post__tag">{tag}</li>)}
+        </ul>
+      )}
+      <h1 class="post__title">{post.data.title}</h1>
+      <p class="post__desc">{post.data.description}</p>
+      <time class="post__date" datetime={post.data.date.toISOString()}>{dateStr}</time>
+    </header>
+
+    <article class="post__body prose">
+      <Content />
+    </article>
+  </main>
+</Layout>
+
+<style>
+  .post {
+    padding: clamp(4rem, 8vw, 7rem) clamp(2rem, 6vw, 5rem);
+    max-width: 680px;
+    margin: 0 auto;
+  }
+  .post__nav { margin-bottom: 3rem; }
+  .back-link {
+    display: inline-block;
+    font-size: 0.8125rem;
+    color: var(--color-muted);
+    text-decoration: none;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    padding: 0.35rem 0.7rem;
+    transition: color 0.2s;
+  }
+  .back-link:hover { color: var(--color-text); }
+  .post__header { margin-bottom: 3rem; }
+  .post__tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+    list-style: none;
+    padding: 0;
+    margin: 0 0 1rem;
+  }
+  .post__tag {
+    font-size: 0.7rem;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--color-muted);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    padding: 0.2rem 0.5rem;
+  }
+  .post__title {
+    font-family: var(--font-display);
+    font-size: clamp(1.75rem, 4vw, 2.75rem);
+    font-weight: 400;
+    line-height: 1.15;
+    margin-bottom: 0.75rem;
+  }
+  .post__desc {
+    font-size: 1rem;
+    color: var(--color-muted);
+    line-height: 1.6;
+    margin-bottom: 1rem;
+  }
+  .post__date {
+    font-size: 0.8rem;
+    color: var(--color-muted);
+    font-variant-numeric: tabular-nums;
+  }
+  /* Prose styles */
+  .prose {
+    font-size: 1rem;
+    line-height: 1.8;
+    color: var(--color-text);
+  }
+  .prose :global(h2) {
+    font-family: var(--font-display);
+    font-size: 1.5rem;
+    font-weight: 400;
+    margin: 2.5rem 0 0.75rem;
+    color: var(--color-text);
+  }
+  .prose :global(h3) {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin: 2rem 0 0.5rem;
+  }
+  .prose :global(p) { margin: 0 0 1.25rem; }
+  .prose :global(a) {
+    color: var(--color-accent);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .prose :global(strong) { font-weight: 600; }
+  .prose :global(em) { font-style: italic; color: var(--color-muted); }
+  .prose :global(ul), .prose :global(ol) {
+    margin: 0 0 1.25rem 1.25rem;
+    line-height: 1.8;
+  }
+  .prose :global(li) { margin-bottom: 0.3rem; }
+  .prose :global(code) {
+    font-family: 'Fira Code', 'JetBrains Mono', monospace;
+    font-size: 0.85em;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    padding: 0.1em 0.35em;
+  }
+  .prose :global(pre) {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    padding: 1.25rem 1.5rem;
+    overflow-x: auto;
+    margin: 0 0 1.5rem;
+    font-size: 0.85rem;
+    line-height: 1.65;
+  }
+  .prose :global(pre code) {
+    background: none;
+    border: none;
+    padding: 0;
+    font-size: inherit;
+  }
+  .prose :global(blockquote) {
+    border-left: 2px solid var(--color-accent);
+    padding-left: 1.25rem;
+    margin: 0 0 1.5rem;
+    color: var(--color-muted);
+    font-style: italic;
+  }
+  .prose :global(hr) {
+    border: none;
+    border-top: 1px solid var(--color-border);
+    margin: 2.5rem 0;
+  }
+</style>
