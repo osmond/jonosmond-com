@@ -3,6 +3,7 @@ title: "The CSS zen garden moment"
 description: "In 2003, someone made the same HTML look like fifty different websites. It changed how I thought about the web."
 date: 2003-05-20
 tags: ["craft", "css", "design"]
+image: "https://picsum.photos/seed/the-css-zen-garden-moment/800/420?grayscale"
 ---
 
 In May 2003, Dave Shea launched the CSS Zen Garden.

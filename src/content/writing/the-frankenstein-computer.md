@@ -3,6 +3,7 @@ title: "The Frankenstein computer"
 description: "I built my first computer from spare parts in 1998, got online, and right-clicked View Source. That one moment changed the direction of my life."
 date: 1999-04-14
 tags: ["craft", "beginnings"]
+image: "https://picsum.photos/seed/the-frankenstein-computer/800/420?grayscale"
 ---
 
 My first computer wasn't bought from a store. It was assembled from parts — hand-me-downs, salvaged components, whatever I could find or afford. A Frankenstein machine. I wired it together, got it to boot, and called it done.

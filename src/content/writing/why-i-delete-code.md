@@ -3,6 +3,7 @@ title: "Why I delete code"
 description: "The best code I've written this year is the code I removed. On the practice of subtraction."
 date: 2022-07-11
 tags: ["craft", "javascript"]
+image: "https://picsum.photos/seed/why-i-delete-code/800/420?grayscale"
 ---
 
 Every quarter I try to delete something.

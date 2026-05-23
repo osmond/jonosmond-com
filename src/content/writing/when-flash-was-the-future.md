@@ -3,6 +3,7 @@ title: "When Flash was the future"
 description: "For a few years in the mid-2000s, the most interesting things on the web were made in a tool that no longer exists."
 date: 2006-03-14
 tags: ["craft", "design", "interaction"]
+image: "https://picsum.photos/seed/when-flash-was-the-future/800/420?grayscale"
 ---
 
 There was a period where the most interesting interaction design on the web happened in Flash.

@@ -3,6 +3,7 @@ title: "How I got into this"
 description: "I built a Frankenstein computer from spare parts, got online for the first time, and right-clicked View Source. That was 1998. I never stopped."
 date: 2016-03-08
 tags: ["craft", "beginnings"]
+image: "https://picsum.photos/seed/how-i-got-into-this/800/420?grayscale"
 ---
 
 I am entirely self-taught. No computer science degree, no bootcamp, no formal training of any kind. What I have is curiosity that started in 1998 and never ran out.

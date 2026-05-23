@@ -3,6 +3,7 @@ title: "What the pandemic taught me about focus"
 description: "Losing the office removed a lot of noise. It also removed a lot of signal."
 date: 2021-02-18
 tags: ["craft"]
+image: "https://picsum.photos/seed/what-the-pandemic-taught-me/800/420?grayscale"
 ---
 
 The first month of working from home I was the most productive I'd ever been. No commute, no ambient office noise, no one stopping by to ask questions. Just me, the code, and uninterrupted silence.

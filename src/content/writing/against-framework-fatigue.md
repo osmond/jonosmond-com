@@ -3,6 +3,7 @@ title: "Against framework fatigue"
 description: "The JavaScript ecosystem moves fast. Here's how I've stopped letting that be a source of anxiety."
 date: 2023-08-29
 tags: ["javascript", "craft"]
+image: "https://picsum.photos/seed/against-framework-fatigue/800/420?grayscale"
 ---
 
 Every few months someone publishes a post titled something like "Is [Framework] Dead?" and a portion of the frontend community briefly loses its mind.

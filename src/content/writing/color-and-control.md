@@ -3,6 +3,7 @@ title: "Color and control"
 description: "Why I sample album art for ambient color and what I learned about CSS transitions."
 date: 2026-03-15
 tags: ["css", "design", "color"]
+image: "https://picsum.photos/seed/color-and-control/800/420?grayscale"
 ---
 
 The `/ambient` page on this site samples the album art of whatever I'm currently listening to and uses it to tint the background gradient. It's a small thing, but it changes the whole feeling of the page.

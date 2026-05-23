@@ -3,6 +3,7 @@ title: "The day JavaScript finally made sense"
 description: "It took two years and one specific moment to understand what JavaScript was actually for."
 date: 2017-06-22
 tags: ["craft", "javascript"]
+image: "https://picsum.photos/seed/the-day-javascript-made-sense/800/420?grayscale"
 ---
 
 I spent two years being scared of JavaScript.

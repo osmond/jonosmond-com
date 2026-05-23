@@ -3,6 +3,7 @@ title: "The physics of UI"
 description: "How spring simulations and physical metaphors make interfaces feel alive."
 date: 2026-04-10
 tags: ["animation", "interaction"]
+image: "https://picsum.photos/seed/the-physics-of-ui/800/420?grayscale"
 ---
 
 There's a quality to good interface animation that's hard to describe. It doesn't just look smooth — it feels *right*. Like you're touching something real.

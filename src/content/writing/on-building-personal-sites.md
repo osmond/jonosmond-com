@@ -3,6 +3,7 @@ title: "On building personal sites"
 description: "Why I keep rebuilding my personal site, and what I've learned from it."
 date: 2026-05-01
 tags: ["craft", "design"]
+image: "https://picsum.photos/seed/on-building-personal-sites/800/420?grayscale"
 ---
 
 Every developer I know has rebuilt their personal site at least three times. The pattern is familiar: you spend a weekend with a new framework, feel productive, ship something, look at it for six months, and then rebuild it again.

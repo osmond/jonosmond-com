@@ -3,6 +3,7 @@ title: "Design is not decoration"
 description: "What three years of working with designers taught me about what design actually is."
 date: 2019-11-05
 tags: ["design", "craft"]
+image: "https://picsum.photos/seed/design-is-not-decoration/800/420?grayscale"
 ---
 
 I used to think design was what things looked like. After three years working alongside people who actually know design, I understand that's like saying surgery is what scalpels look like.

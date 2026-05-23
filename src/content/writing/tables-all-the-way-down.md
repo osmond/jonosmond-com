@@ -3,6 +3,7 @@ title: "Tables all the way down"
 description: "Building websites in 2001 meant nesting tables inside tables inside tables. We didn't know there was another way."
 date: 2001-09-12
 tags: ["craft", "beginnings", "css"]
+image: "https://picsum.photos/seed/tables-all-the-way-down/800/420?grayscale"
 ---
 
 The first production site I built was laid out entirely in tables.
