@@ -1,10 +1,16 @@
 ---
+import { getCollection } from 'astro:content';
+
 const focus = [
   'Accessibility',
   'Product UI',
   'Design systems',
   'Front-end development',
 ];
+
+const recentPosts = (await getCollection('writing', e => !e.data.draft))
+  .sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf())
+  .slice(0, 2);
 ---
 
 <section class="about">
@@ -22,52 +28,24 @@ const focus = [
         ))}
       </ul>
       <div class="project-cards">
-      <a
-        href="https://github.com/osmond/Botanica"
-        class="project-card"
-        target="_blank"
-        rel="noopener noreferrer"
-        aria-label="Botanica — view on GitHub"
-      >
-        <div class="project-card__header">
-          <span class="project-card__name">Botanica</span>
-          <svg class="project-card__arrow" aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
-            <path d="M3 8h10M9 4l4 4-4 4" stroke-linecap="round" stroke-linejoin="round" />
-          </svg>
-        </div>
-        <p class="project-card__desc">
-          A plant care companion iOS app built with SwiftUI. Track watering schedules, identify plants, and keep your collection thriving.
-        </p>
-        <div class="project-card__tags">
-          <span>SwiftUI</span>
-          <span>iOS</span>
-          <span>CoreData</span>
-        </div>
-      </a>
-      <a
-        href="https://github.com/osmond/wild-tracker"
-        class="project-card"
-        target="_blank"
-        rel="noopener noreferrer"
-        aria-label="Wild Tracker — view on GitHub"
-      >
-        <div class="project-card__header">
-          <span class="project-card__name">Wild Tracker</span>
-          <svg class="project-card__arrow" aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
-            <path d="M3 8h10M9 4l4 4-4 4" stroke-linecap="round" stroke-linejoin="round" />
-          </svg>
-        </div>
-        <p class="project-card__desc">
-          Polls moneyline odds hour-by-hour across Pinnacle, DraftKings, FanDuel, and BetMGM for every Minnesota Wild game. Flags sharp line moves, calculates CLV, EV, and ROI, and surfaces trends through a Chart.js dashboard with puck-line and O/U trackers. Deployed on Railway.
-        </p>
-        <div class="project-card__tags">
-          <span>Node.js</span>
-          <span>Express</span>
-          <span>SQLite</span>
-          <span>Vite</span>
-          <span>Chart.js</span>
-        </div>
-      </a>
+      {recentPosts.map(post => {
+        const dateStr = post.data.date.toLocaleDateString('en-US', { year: 'numeric', month: 'short' });
+        return (
+          <a href={`/writing/${post.id}`} class="project-card" aria-label={post.data.title}>
+            <div class="project-card__header">
+              <span class="project-card__name">{post.data.title}</span>
+              <svg class="project-card__arrow" aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M3 8h10M9 4l4 4-4 4" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+            </div>
+            <p class="project-card__desc">{post.data.description}</p>
+            <div class="project-card__tags">
+              <span>{dateStr}</span>
+              {post.data.tags.slice(0, 2).map(tag => <span>{tag}</span>)}
+            </div>
+          </a>
+        );
+      })}
       </div>
     </div>
   </div>
