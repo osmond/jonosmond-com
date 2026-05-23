@@ -5,22 +5,24 @@ date: 2016-03-08
 tags: ["craft", "beginnings"]
 ---
 
-I didn't plan to become a developer. I planned to study graphic design.
+I didn't plan to do this for twenty-five years.
 
-The first time I wrote HTML, I was fourteen and trying to make a MySpace profile look less like everyone else's. I found a tutorial somewhere — I can't even remember where — that explained what `<div>` meant. Something clicked. Not the syntax. The idea that you could describe structure, and the browser would just… render it.
+The first time I wrote HTML, I was a teenager in the late nineties, trying to understand why a page I'd found looked the way it did. I right-clicked, hit View Source, and stared at a wall of tags. It wasn't obvious. But I kept coming back to it.
 
-That feeling never really went away.
+What hooked me wasn't the output. It was the directness of the relationship between what you wrote and what appeared. No compiler, no build step, no abstraction between the intent and the result. You typed something and the browser made it real.
 
-## The detour
+That directness is still what I like best about building for the web.
 
-I studied design in college, not computer science. The program was good at teaching me to see — proportion, hierarchy, how white space does the actual work. But every time we had to present web work, I was the one in the group who built it rather than exporting a mockup. Not because I was especially good at code. Because I liked making the thing real.
+## The early years
 
-There's a difference between a design that lives in Photoshop and one that loads in a browser. The latter has physics. It has to respond to a viewport. It has to exist in time. That friction is interesting to me.
+I started doing web work professionally around 2001 — tables, `<font>` tags, the whole stack. Nobody called it front-end development. It was just "the web stuff." You learned by reading other people's source code, asking questions on forums, and making a lot of things that looked terrible.
 
-## The first project I was actually proud of
+The early web had almost no gatekeeping. If you could make something appear in a browser, you were a web developer. That openness shaped how I think about the craft. It's never been about credentials. It's about whether the thing works.
 
-Junior year I built a portfolio site for a friend who was a photographer. Fully from scratch. No WordPress, no template. I spent three nights getting the image grid right, learning about `float`, then about `inline-block`, then finally discovering Flexbox and rewriting everything.
+## What has stayed the same
 
-She never used it. But I didn't care. I knew something by the end that I hadn't known at the start.
+The tools have changed completely. The fundamentals haven't. Structure, presentation, behavior — that separation still holds. Understanding the relationship between them is still the thing that makes someone genuinely good at this.
+
+Everything I've learned since 2001 has been in service of getting better at those three things. The frameworks come and go. The underlying model remains.
 
 That's still what I chase.
