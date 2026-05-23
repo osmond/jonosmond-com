@@ -61,6 +61,12 @@ import Layout from '../layouts/Layout.astro';
           </div>
         </section>
       </div>
+
+      <!-- History -->
+      <section class="ambient__history" id="ambient-history" aria-label="Recently played" hidden>
+        <p class="ambient__section-label">Recently played</p>
+        <ul class="ambient__history-list" id="history-list" role="list"></ul>
+      </section>
     </main>
   </div>
 </Layout>
@@ -351,14 +357,62 @@ import Layout from '../layouts/Layout.astro';
   // ─── Boot ──────────────────────────────────────────────────────────────────
   loadSpotify(true);
   loadWeather();
+  loadHistory();
 
   const spotifyId = setInterval(() => loadSpotify(false), 30_000);
   const weatherId = setInterval(loadWeather, 600_000);
+  const historyId = setInterval(loadHistory, 120_000);
 
   document.addEventListener('astro:before-swap', () => {
     clearInterval(spotifyId);
     clearInterval(weatherId);
+    clearInterval(historyId);
   }, { once: true });
+
+  // ─── Spotify history ───────────────────────────────────────────────────────
+  interface HistoryEntry {
+    track: string;
+    artist: string;
+    albumArt: string;
+    url: string;
+    at: number;
+  }
+
+  async function loadHistory() {
+    try {
+      const res = await fetch('/api/history');
+      if (!res.ok) return;
+      const data = await res.json() as { history: HistoryEntry[] };
+      const items = data.history ?? [];
+      const section = document.getElementById('ambient-history');
+      const list = document.getElementById('history-list');
+      if (!section || !list || items.length === 0) return;
+      section.hidden = false;
+      list.innerHTML = items.map(item => {
+        const ago = getRelativeTime(item.at);
+        return `<li class="ambient__history-item">
+          ${item.albumArt ? `<img class="ambient__history-art" src="${escHtml(item.albumArt)}" alt="" loading="lazy" width="32" height="32">` : ''}
+          <div class="ambient__history-meta">
+            <a class="ambient__history-track" href="${escHtml(item.url)}" target="_blank" rel="noopener noreferrer">${escHtml(item.track)}</a>
+            <span class="ambient__history-artist">${escHtml(item.artist)}</span>
+          </div>
+          <span class="ambient__history-ago">${ago}</span>
+        </li>`;
+      }).join('');
+    } catch { /* non-critical */ }
+  }
+
+  function escHtml(s: string) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function getRelativeTime(ts: number): string {
+    const diff = Math.floor((Date.now() - ts) / 1000);
+    if (diff < 60) return 'just now';
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+    return `${Math.floor(diff / 86400)}d ago`;
+  }
 </script>
 
 <style>
@@ -696,5 +750,62 @@ import Layout from '../layouts/Layout.astro';
     font-size: 0.875rem;
     color: var(--color-muted);
     margin: 0;
+  }
+
+  /* ── History ── */
+  .ambient__history {
+    margin-top: 2.5rem;
+    max-width: 480px;
+  }
+  .ambient__history-list {
+    list-style: none;
+    padding: 0;
+    margin: 0.75rem 0 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  .ambient__history-item {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+  }
+  .ambient__history-art {
+    width: 32px;
+    height: 32px;
+    border-radius: 4px;
+    object-fit: cover;
+    flex-shrink: 0;
+    opacity: 0.8;
+  }
+  .ambient__history-meta {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+  }
+  .ambient__history-track {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--color-text);
+    text-decoration: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .ambient__history-track:hover { color: var(--color-accent); }
+  .ambient__history-artist {
+    font-size: 0.75rem;
+    color: var(--color-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .ambient__history-ago {
+    font-size: 0.7rem;
+    color: var(--color-muted);
+    flex-shrink: 0;
+    opacity: 0.6;
   }
 </style>

@@ -3,7 +3,8 @@ export const prerender = true;
 import { getCollection } from 'astro:content';
 import Layout from '../../layouts/Layout.astro';
 
-const posts = (await getCollection('writing', e => !e.data.draft))
+const showDrafts = import.meta.env.DEV && Astro.url.searchParams.get('preview') === '1';
+const posts = (await getCollection('writing', e => showDrafts || !e.data.draft))
   .sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
 ---
 
@@ -28,7 +29,7 @@ const posts = (await getCollection('writing', e => !e.data.draft))
               <p class="wr__desc">{post.data.description}</p>
               {post.data.tags.length > 0 && (
                 <ul class="wr__tags" role="list">
-                  {post.data.tags.map(tag => <li class="wr__tag">{tag}</li>)}
+                  {post.data.tags.map(tag => <li class="wr__tag"><a href={`/writing/tag/${tag}`} class="wr__tag-link">{tag}</a></li>)}
                 </ul>
               )}
             </a>
@@ -135,4 +136,9 @@ const posts = (await getCollection('writing', e => !e.data.draft))
     border-radius: 4px;
     padding: 0.2rem 0.5rem;
   }
+  .wr__tag-link {
+    color: inherit;
+    text-decoration: none;
+  }
+  .wr__tag-link:hover { color: var(--color-accent); }
 </style>

@@ -4,7 +4,7 @@ import Layout from '../../layouts/Layout.astro';
 ---
 
 <Layout title="Voronoi — Lab — Jon Osmond" description="Delaunay triangulation and Voronoi cells from drifting points.">
-  <div class="lab-exp">
+  <div class="lab-exp" transition:name="lab-card-voronoi">
     <nav class="lab-exp__nav">
       <a href="/lab" class="lab-exp__back">
         <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -12,7 +12,7 @@ import Layout from '../../layouts/Layout.astro';
         </svg>
         Lab
       </a>
-      <span class="lab-exp__name">Voronoi</span>
+      <span class="lab-exp__name" transition:name="lab-title-voronoi">Voronoi</span>
     </nav>
     <canvas id="exp-canvas" aria-label="Interactive Voronoi diagram with drifting points"></canvas>
     <div class="lab-exp__info" id="exp-info">

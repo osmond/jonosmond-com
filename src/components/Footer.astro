@@ -1,5 +1,6 @@
 ---
 const year = new Date().getFullYear();
+const { pathname } = Astro.url;
 const links = [
   { label: 'Email', href: 'mailto:jonathan.osmond@gmail.com' },
   { label: 'GitHub', href: 'https://github.com/osmond' },
@@ -9,6 +10,11 @@ const links = [
   { label: 'Experiments', href: '/lab' },
   { label: 'Analytics', href: '/analytics' },
 ];
+
+function isActive(href: string) {
+  if (href.startsWith('http') || href.startsWith('mailto')) return false;
+  return pathname === href || pathname.startsWith(href + '/');
+}
 ---
 
 <footer class="footer">
@@ -18,7 +24,8 @@ const links = [
       {links.map(({ label, href }) => (
         <a
           href={href}
-          class="footer__link"
+          class={`footer__link${isActive(href) ? ' footer__link--active' : ''}`}
+          aria-current={isActive(href) ? 'page' : undefined}
           {...href.startsWith('http') ? { target: '_blank', rel: 'noopener noreferrer' } : {}}
         >
           {label}
@@ -72,5 +79,9 @@ const links = [
 
   .footer__link:hover {
     color: var(--color-text);
+  }
+
+  .footer__link--active {
+    color: var(--color-accent);
   }
 </style>

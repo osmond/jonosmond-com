@@ -78,13 +78,13 @@ const experiments = [
 
     <section class="lab__grid" aria-label="Experiments">
       {experiments.map(({ slug, tag, title, desc, preview }) => (
-        <a href={`/lab/${slug}`} class="lab__card" data-preview={preview}>
+        <a href={`/lab/${slug}`} class="lab__card" data-preview={preview} transition:name={`lab-card-${slug}`}>
           <div class="lab__preview" aria-hidden="true">
             <canvas class="lab__canvas" data-preview={preview}></canvas>
           </div>
           <div class="lab__body">
             <span class="lab__tag">{tag}</span>
-            <h2 class="lab__card-title">{title}</h2>
+            <h2 class="lab__card-title" transition:name={`lab-title-${slug}`}>{title}</h2>
             <p class="lab__card-desc">{desc}</p>
             <span class="lab__arrow" aria-hidden="true">
               <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">

@@ -6,15 +6,27 @@ import AIAssistant from '../components/AIAssistant.astro';
 interface Props {
   title?: string;
   description?: string;
+  ogTitle?: string;
+  ogDescription?: string;
+  ogImage?: string;
+  ogType?: 'website' | 'article';
 }
 
 const {
   title = 'Jon Osmond — Interface Developer',
   description = 'I build clean, accessible product interfaces with a focus on simplicity and reliability.',
+  ogTitle,
+  ogDescription,
+  ogImage: ogImageProp,
+  ogType = 'website',
 } = Astro.props;
 
 const canonicalURL = new URL(Astro.url.pathname, Astro.site ?? 'https://jonosmond.com');
-const ogImage = new URL('/og.svg', Astro.site ?? 'https://jonosmond.com');
+const ogImage = ogImageProp
+  ? new URL(ogImageProp, Astro.site ?? 'https://jonosmond.com')
+  : new URL('/og.svg', Astro.site ?? 'https://jonosmond.com');
+const resolvedOgTitle = ogTitle ?? title;
+const resolvedOgDescription = ogDescription ?? description;
 ---
 
 <!doctype html>
@@ -26,10 +38,10 @@ const ogImage = new URL('/og.svg', Astro.site ?? 'https://jonosmond.com');
     <link rel="canonical" href={canonicalURL} />
 
     <!-- OG -->
-    <meta property="og:type" content="website" />
+    <meta property="og:type" content={ogType} />
     <meta property="og:url" content={canonicalURL} />
-    <meta property="og:title" content={title} />
-    <meta property="og:description" content={description} />
+    <meta property="og:title" content={resolvedOgTitle} />
+    <meta property="og:description" content={resolvedOgDescription} />
     <meta property="og:image" content={ogImage} />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
@@ -183,6 +195,58 @@ const ogImage = new URL('/og.svg', Astro.site ?? 'https://jonosmond.com');
         onCLS(reportVital);
         onINP(reportVital);
       }
+    </script>
+    <script>
+      // ── Copy code buttons ──────────────────────────────────────────────────
+      function attachCopyButtons() {
+        document.querySelectorAll('pre:not([data-copy-attached])').forEach(pre => {
+          pre.setAttribute('data-copy-attached', '');
+          const btn = document.createElement('button');
+          btn.className = 'copy-btn';
+          btn.setAttribute('aria-label', 'Copy code');
+          btn.innerHTML = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="5" y="5" width="8" height="8" rx="1.5"/><path d="M3 11V3h8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+          btn.addEventListener('click', async () => {
+            const code = pre.querySelector('code')?.innerText ?? pre.innerText;
+            try {
+              await navigator.clipboard.writeText(code);
+              btn.classList.add('copy-btn--done');
+              btn.innerHTML = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 8l3.5 3.5L13 5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+              setTimeout(() => {
+                btn.classList.remove('copy-btn--done');
+                btn.innerHTML = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="5" y="5" width="8" height="8" rx="1.5"/><path d="M3 11V3h8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+              }, 2000);
+            } catch { /* clipboard denied */ }
+          });
+          (pre as HTMLElement).style.position = 'relative';
+          pre.appendChild(btn);
+        });
+      }
+      attachCopyButtons();
+      document.addEventListener('astro:page-load', attachCopyButtons);
+    </script>
+    <script>
+      // ── Keyboard shortcuts ─────────────────────────────────────────────────
+      // G then H = home, G then W = writing, G then L = lab
+      let gPressed = false;
+      let gTimer: ReturnType<typeof setTimeout>;
+      document.addEventListener('keydown', (e) => {
+        const tag = (e.target as Element).tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement).isContentEditable) return;
+        if (e.metaKey || e.ctrlKey || e.altKey) return;
+        if (e.key === 'g' || e.key === 'G') {
+          gPressed = true;
+          clearTimeout(gTimer);
+          gTimer = setTimeout(() => { gPressed = false; }, 1500);
+          return;
+        }
+        if (gPressed) {
+          gPressed = false;
+          clearTimeout(gTimer);
+          const nav: Record<string, string> = { h: '/', H: '/', w: '/writing', W: '/writing', l: '/lab', L: '/lab', u: '/uses', U: '/uses' };
+          const dest = nav[e.key];
+          if (dest) { e.preventDefault(); window.location.href = dest; }
+        }
+      });
     </script>
     <AIAssistant />
   </body>

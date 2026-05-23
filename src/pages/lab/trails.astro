@@ -4,7 +4,7 @@ import Layout from '../../layouts/Layout.astro';
 ---
 
 <Layout title="Cursor Trails — Lab — Jon Osmond" description="Spring-physics cursor trail that follows your mouse with natural damping.">
-  <div class="lab-exp">
+  <div class="lab-exp" transition:name="lab-card-trails">
     <nav class="lab-exp__nav">
       <a href="/lab" class="lab-exp__back">
         <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -12,7 +12,7 @@ import Layout from '../../layouts/Layout.astro';
         </svg>
         Lab
       </a>
-      <span class="lab-exp__name">Cursor Trails</span>
+      <span class="lab-exp__name" transition:name="lab-title-trails">Cursor Trails</span>
     </nav>
     <canvas id="exp-canvas" aria-label="Spring-physics cursor trail animation"></canvas>
     <div class="lab-exp__info" id="exp-info">

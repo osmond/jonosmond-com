@@ -73,6 +73,23 @@ function buildResponse(track: SpotifyTrack, isPlaying: boolean, progressMs = 0) 
   };
 }
 
+async function pushToHistory(trackData: ReturnType<typeof buildResponse>) {
+  const url = process.env.UPSTASH_REDIS_REST_URL?.trim();
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN?.trim();
+  if (!url || !token) return;
+  try {
+    const entry = JSON.stringify({ ...trackData, at: Date.now() });
+    await fetch(`${url}/pipeline`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify([
+        ['lpush', 'spotify:history', entry],
+        ['ltrim', 'spotify:history', 0, 19],
+      ]),
+    });
+  } catch { /* non-critical */ }
+}
+
 export const GET: APIRoute = async () => {
   const SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID?.trim();
   const SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET?.trim();
@@ -97,8 +114,10 @@ export const GET: APIRoute = async () => {
     if (nowRes.status === 200) {
       const nowData = (await nowRes.json()) as SpotifyCurrentlyPlaying;
       if (nowData?.item) {
+        const payload = buildResponse(nowData.item, nowData.is_playing, nowData.progress_ms);
+        if (nowData.is_playing) pushToHistory(payload);
         return new Response(
-          JSON.stringify(buildResponse(nowData.item, nowData.is_playing, nowData.progress_ms)),
+          JSON.stringify(payload),
           {
             status: 200,
             headers: {
@@ -130,7 +149,8 @@ export const GET: APIRoute = async () => {
       });
     }
 
-    return new Response(JSON.stringify(buildResponse(track, false)), {
+    const payload = buildResponse(track, false);
+    return new Response(JSON.stringify(payload), {
       status: 200,
       headers: {
         'Content-Type': 'application/json',
