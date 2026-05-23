@@ -22,6 +22,7 @@ const readingTime = Math.max(1, Math.ceil(wordCount / 200));
   ogTitle={post.data.title}
   ogDescription={post.data.description}
   ogType="article"
+  ogImage={post.data.image}
 >
   <main class="post">
     <nav class="post__nav">
@@ -42,6 +43,18 @@ const readingTime = Math.max(1, Math.ceil(wordCount / 200));
         <span class="post__reading-time">{readingTime} min read</span>
       </div>
     </header>
+
+    {post.data.image && (
+      <div class="post__hero">
+        <img
+          src={post.data.image}
+          alt={post.data.imageAlt ?? post.data.title}
+          class="post__hero-img"
+          loading="eager"
+          decoding="async"
+        />
+      </div>
+    )}
 
     <article class="post__body prose">
       <Content />
@@ -208,6 +221,19 @@ const readingTime = Math.max(1, Math.ceil(wordCount / 200));
     border: none;
     border-top: 1px solid var(--color-border);
     margin: 2.5rem 0;
+  }
+  .post__hero {
+    margin-bottom: 3rem;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid var(--color-border);
+  }
+  .post__hero-img {
+    display: block;
+    width: 100%;
+    height: auto;
+    max-height: 420px;
+    object-fit: cover;
   }
   .post__comments {
     margin-top: 4rem;
