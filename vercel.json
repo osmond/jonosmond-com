@@ -27,5 +27,12 @@
         }
       ]
     }
+  ],
+  "redirects": [
+    {
+      "source": "/writing/colour-and-control",
+      "destination": "/writing/color-and-control",
+      "permanent": true
+    }
   ]
 }
