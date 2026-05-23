@@ -3,7 +3,6 @@ title: "AI and the texture of my work"
 description: "A year into working with AI coding tools, here's what has changed and what hasn't."
 date: 2024-11-04
 tags: ["craft", "javascript"]
-image: "https://picsum.photos/seed/ai-and-the-texture-of-my-work/800/420?grayscale"
 ---
 
 I've been using AI tools in my workflow for about a year. Not occasionally — daily. Long enough to have some opinions that aren't just first impressions.

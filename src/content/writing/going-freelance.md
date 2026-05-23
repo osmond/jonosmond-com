@@ -3,7 +3,6 @@ title: "Going freelance"
 description: "After nearly a decade of building other people's things, I started building my own practice. Here's what surprised me."
 date: 2010-08-19
 tags: ["craft", "beginnings"]
-image: "https://picsum.photos/seed/going-freelance/800/420?grayscale"
 ---
 
 In 2010, I was running Osmond Interactive out of my apartment.

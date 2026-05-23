@@ -3,7 +3,6 @@ title: "Learning to use the command line"
 description: "I spent ten years building websites by clicking things. Then the build process made clicking obsolete."
 date: 2014-02-22
 tags: ["craft", "javascript"]
-image: "https://picsum.photos/seed/learning-to-use-the-command-line/800/420?grayscale"
 ---
 
 I learned to use the command line in my early thirties.

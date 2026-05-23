@@ -3,7 +3,6 @@ title: "jQuery and the end of browser wars"
 description: "One library made cross-browser JavaScript sane. Here's what that felt like before we took it for granted."
 date: 2008-07-31
 tags: ["craft", "javascript"]
-image: "https://picsum.photos/seed/jquery-and-the-end-of-browser-wars/800/420?grayscale"
 ---
 
 If you learned JavaScript before jQuery, you remember what it cost.

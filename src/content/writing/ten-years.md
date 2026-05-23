@@ -3,7 +3,6 @@ title: "Nearly thirty years"
 description: "What close to three decades of building for the web has taught me, and what I still don't know."
 date: 2025-09-01
 tags: ["craft", "design"]
-image: "https://picsum.photos/seed/ten-years/800/420?grayscale"
 ---
 
 I first got online in 1998. I built my first webpage shortly after. I've been doing this ever since.

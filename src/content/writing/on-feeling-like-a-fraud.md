@@ -3,7 +3,6 @@ title: "On feeling like a fraud"
 description: "Imposter syndrome is real, but the story it tells you about yourself is wrong."
 date: 2018-09-14
 tags: ["craft"]
-image: "https://picsum.photos/seed/on-feeling-like-a-fraud/800/420?grayscale"
 ---
 
 Two years into my first real job, I still expected someone to notice I didn't belong.

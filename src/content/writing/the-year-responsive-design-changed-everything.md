@@ -3,7 +3,6 @@ title: "The year responsive design changed everything"
 description: "Ethan Marcotte's 2010 article gave a name to something I'd been trying to do badly for years."
 date: 2012-04-03
 tags: ["craft", "css", "design"]
-image: "https://picsum.photos/seed/the-year-responsive-design-changed-everything/800/420?grayscale"
 ---
 
 In May 2010, Ethan Marcotte published an article in A List Apart called "Responsive Web Design."
