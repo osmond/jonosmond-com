@@ -1,19 +1,21 @@
 ---
-title: "Twenty-five years"
-description: "What a quarter century of building for the web has taught me, and what I still don't know."
+title: "Nearly thirty years"
+description: "What close to three decades of building for the web has taught me, and what I still don't know."
 date: 2025-09-01
 tags: ["craft", "design"]
 ---
 
-I've been doing this for twenty-five years.
+I first got online in 1998. I built my first webpage shortly after. I've been doing this ever since.
 
-I started building web pages in the late nineties. I've been doing it professionally since 2001. At some point the question of whether you've "made it" gets replaced by the question of what you're doing with the time. I'm still working on the answer.
+That's close to thirty years. I'm entirely self-taught. No degree, no bootcamp — just a Frankenstein computer, a browser, and a habit of right-clicking View Source that never went away. At some point the question of whether you've "made it" gets replaced by the question of what you're doing with the time. I'm still working on the answer.
 
 ## What I know
 
 The fundamentals don't expire. HTML, CSS, JavaScript — not the frameworks, the actual platform — is more stable than it looks from the outside. Every few years something changes enough to matter. But the core model: documents, boxes, events, the paint cycle — I've needed that knowledge every year of my career. The same year I learned it.
 
-The soft stuff compounds. Communication, taste, the ability to disagree productively, knowing when to push back and when to let go — these are the things that make a twenty-five-year career different from a one-year career repeated twenty-five times.
+Being self-taught means the gaps in your knowledge have your name on them. It also means every piece of understanding you have, you earned by doing. That trade-off has been worth it.
+
+The soft stuff compounds. Communication, taste, the ability to disagree productively, knowing when to push back and when to let go — these are the things that make a long career different from a short one repeated many times.
 
 Simplicity is a practice, not a state. Every system tends toward complexity over time. Working against that tendency is a deliberate, ongoing act. The developers I most admire are the ones who notice when something is more complicated than it needs to be, and do something about it.
 
@@ -25,10 +27,8 @@ Whether I've found the right balance between craft and output. I care a lot abou
 
 How to fully relax about the things I don't know. I've made peace with imposter syndrome but I haven't made peace with uncertainty. That's probably next.
 
-## What I'd tell myself in 2001
+## What I'd tell myself in 1998
 
-You're going to rebuild this site more times than you can count. Each one will feel like the final version.
-
-It won't be.
+That Frankenstein computer is going to lead somewhere you can't imagine yet.
 
 Keep going.

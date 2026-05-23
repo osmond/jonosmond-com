@@ -9,7 +9,7 @@ The first production site I built was laid out entirely in tables.
 
 Not because I chose tables. Because that was how you did it. If you wanted two columns, you made a table with two cells. If you wanted consistent margins, you made a table with an empty spacer cell. If you wanted a header, footer, and sidebar, you nested tables three levels deep and prayed the browser rendered them the same way.
 
-This was 2001. I was learning web development professionally, which mostly meant reading View Source on sites I admired, reverse-engineering what I found, and asking questions in forums where people were patient with beginners.
+This was 2001 — about three years into teaching myself to build for the web. I'd been at it since 1998, cobbling together pages from whatever I could learn by reading View Source and asking questions on forums. The production work was new. The self-taught approach wasn't.
 
 ## The view from inside
 
