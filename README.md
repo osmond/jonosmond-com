@@ -1,3 +1,5 @@
+[![Lighthouse CI](https://github.com/osmond/jonosmond-com/actions/workflows/lighthouse.yml/badge.svg)](https://github.com/osmond/jonosmond-com/actions/workflows/lighthouse.yml)
+
 # Astro Starter Kit: Minimal
 
 ```sh
