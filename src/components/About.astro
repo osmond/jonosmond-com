@@ -8,6 +8,24 @@ const focus = [
   'Front-end development',
 ];
 
+const principles = [
+  {
+    number: '01',
+    title: 'Clear by default',
+    description: 'Hierarchy and language should do more work than instructions.',
+  },
+  {
+    number: '02',
+    title: 'Felt, not announced',
+    description: 'Motion and feedback should explain what changed without demanding attention.',
+  },
+  {
+    number: '03',
+    title: 'Reliable under pressure',
+    description: 'Accessibility and resilient states are part of the product—not cleanup work.',
+  },
+];
+
 const featuredProjects = [
   {
     name: 'Label Lens',
@@ -32,19 +50,40 @@ const recentPosts = (await getCollection('writing', e => !e.data.draft))
 
 <section class="about">
   <div class="about__inner">
-    <span class="about__label">About</span>
+    <span class="about__label"><span>01</span> About</span>
     <div class="about__content">
-      <p class="about__bio">
-        I'm a product-focused interface developer who cares about the
-        craft — clear hierarchy, considered interaction, and interfaces that
-        feel effortless to use.
-      </p>
+      <header class="about__intro">
+        <p class="about__bio">
+          I care about the moment a complicated product stops feeling complicated.
+        </p>
+        <div class="about__intro-grid">
+          <p class="about__detail">
+            I'm a product-focused interface developer working where design and engineering meet—shaping hierarchy, interaction, accessibility, and the systems underneath them. The best result is clear enough to disappear and distinctive enough to remember.
+          </p>
+          <aside class="about__side-quest">
+            <span>Current side quest</span>
+            <strong>Two FIATs. Same shape. Opposite briefs.</strong>
+            <a href="/writing/same-shape-opposite-briefs">Read the field notes <span aria-hidden="true">→</span></a>
+          </aside>
+        </div>
+      </header>
+
+      <div class="about__principles" aria-label="Design principles">
+        {principles.map((principle) => (
+          <article class="about__principle">
+            <span class="about__principle-number">{principle.number}</span>
+            <h3>{principle.title}</h3>
+            <p>{principle.description}</p>
+          </article>
+        ))}
+      </div>
+
       <ul class="about__focus" aria-label="Focus areas">
         {focus.map((item) => (
           <li>{item}</li>
         ))}
       </ul>
-      <h3 class="about__subheading">Featured Projects</h3>
+      <h3 class="about__subheading"><span>Selected</span> Work</h3>
       <div class="project-cards" aria-label="Featured projects">
         {featuredProjects.map((project) => (
           <a
@@ -68,7 +107,7 @@ const recentPosts = (await getCollection('writing', e => !e.data.draft))
           </a>
         ))}
       </div>
-      <h3 class="about__subheading">Recent Writing</h3>
+      <h3 class="about__subheading"><span>From the</span> Notebook</h3>
       <div class="project-cards">
       {recentPosts.map(post => {
         const dateStr = post.data.date.toLocaleDateString('en-US', { year: 'numeric', month: 'short' });
@@ -116,6 +155,11 @@ const recentPosts = (await getCollection('writing', e => !e.data.draft))
   }
 
   .about__label {
+    position: sticky;
+    top: 2rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
     font-family: var(--font-body);
     font-size: 0.75rem;
     font-weight: 500;
@@ -125,17 +169,137 @@ const recentPosts = (await getCollection('writing', e => !e.data.draft))
     padding-top: 0.35rem;
   }
 
+  .about__label span {
+    color: var(--color-muted);
+    font-variant-numeric: tabular-nums;
+    opacity: 0.55;
+  }
+
+  .about__intro {
+    padding-bottom: clamp(2rem, 4vw, 3.25rem);
+    border-bottom: 1px solid var(--color-border);
+  }
+
   .about__bio {
     font-family: var(--font-display);
-    font-size: clamp(1.5rem, 2.8vw, 2.25rem);
-    line-height: 1.3;
+    max-width: 18ch;
+    font-size: clamp(2rem, 4.8vw, 4rem);
+    line-height: 1.03;
+    letter-spacing: -0.025em;
     color: var(--color-text);
-    margin: 0 0 2rem;
+    margin: 0 0 clamp(1.75rem, 4vw, 3rem);
+  }
+
+  .about__intro-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(15rem, 0.65fr);
+    gap: clamp(1.5rem, 4vw, 3rem);
+    align-items: start;
+  }
+
+  .about__detail {
+    max-width: 43rem;
+    margin: 0;
+    color: var(--color-muted);
+    font-family: var(--font-body);
+    font-size: clamp(1rem, 1.7vw, 1.125rem);
+    line-height: 1.75;
+  }
+
+  .about__side-quest {
+    position: relative;
+    overflow: hidden;
+    padding: 1.1rem 1.15rem;
+    border: 1px solid var(--color-border-highlight);
+    border-radius: 12px;
+    background:
+      radial-gradient(circle at 100% 0, rgb(196 107 75 / 0.14), transparent 55%),
+      var(--color-surface);
+  }
+
+  .about__side-quest > span {
+    display: block;
+    margin-bottom: 0.45rem;
+    color: var(--color-accent);
+    font-family: var(--font-body);
+    font-size: 0.625rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .about__side-quest strong {
+    display: block;
+    margin-bottom: 0.85rem;
+    color: var(--color-text);
+    font-family: var(--font-display);
+    font-size: 1.25rem;
+    font-weight: 400;
+    line-height: 1.25;
+  }
+
+  .about__side-quest a {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    color: var(--color-muted);
+    font-family: var(--font-body);
+    font-size: 0.75rem;
+    font-weight: 500;
+    text-decoration: none;
+    transition: color 0.2s, gap 0.2s;
+  }
+
+  .about__side-quest a:hover {
+    gap: 0.55rem;
+    color: var(--color-accent);
+  }
+
+  .about__principles {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    margin: 0 0 1.5rem;
+  }
+
+  .about__principle {
+    padding: 1.5rem 1.25rem 1.5rem 0;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .about__principle + .about__principle {
+    padding-left: 1.25rem;
+    border-left: 1px solid var(--color-border);
+  }
+
+  .about__principle-number {
+    display: block;
+    margin-bottom: 1.75rem;
+    color: var(--color-accent);
+    font-family: var(--font-body);
+    font-size: 0.625rem;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.08em;
+  }
+
+  .about__principle h3 {
+    margin: 0 0 0.45rem;
+    color: var(--color-text);
+    font-family: var(--font-display);
+    font-size: 1.25rem;
+    font-weight: 400;
+  }
+
+  .about__principle p {
+    margin: 0;
+    color: var(--color-muted);
+    font-family: var(--font-body);
+    font-size: 0.8125rem;
+    line-height: 1.55;
   }
 
   .about__focus {
     list-style: none;
-    margin: 0 0 2.5rem;
+    margin: 0 0 3.5rem;
     padding: 0;
     display: flex;
     flex-wrap: wrap;
@@ -152,6 +316,9 @@ const recentPosts = (await getCollection('writing', e => !e.data.draft))
   }
 
   .about__subheading {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
     font-family: var(--font-body);
     font-size: 0.75rem;
     font-weight: 500;
@@ -159,6 +326,10 @@ const recentPosts = (await getCollection('writing', e => !e.data.draft))
     text-transform: uppercase;
     color: var(--color-muted);
     margin: 0 0 0.85rem;
+  }
+
+  .about__subheading span {
+    color: var(--color-accent);
   }
 
   .project-cards {
@@ -175,17 +346,35 @@ const recentPosts = (await getCollection('writing', e => !e.data.draft))
   }
 
   .project-card {
+    position: relative;
+    overflow: hidden;
     display: block;
     padding: 1.5rem;
     border: 1px solid var(--color-border);
     border-radius: 12px;
     text-decoration: none;
-    transition: border-color 0.2s, background 0.2s;
+    transition: border-color 0.2s, background 0.2s, transform 0.2s;
+  }
+
+  .project-card::before {
+    content: '';
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 2px;
+    background: var(--color-accent);
+    transform: scaleY(0);
+    transform-origin: bottom;
+    transition: transform 0.25s ease;
   }
 
   .project-card:hover {
     border-color: rgba(196, 107, 75, 0.4);
     background: rgba(196, 107, 75, 0.04);
+    transform: translateY(-3px);
+  }
+
+  .project-card:hover::before {
+    transform: scaleY(1);
   }
 
   .project-card__header {
@@ -236,5 +425,43 @@ const recentPosts = (await getCollection('writing', e => !e.data.draft))
     border: 1px solid var(--color-border);
     border-radius: 100px;
     padding: 0.2rem 0.65rem;
+  }
+
+  @media (max-width: 800px) {
+    .about__intro-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .about__principles {
+      grid-template-columns: 1fr;
+    }
+
+    .about__principle,
+    .about__principle + .about__principle {
+      padding: 1.25rem 0;
+      border-left: 0;
+    }
+
+    .about__principle-number {
+      margin-bottom: 0.65rem;
+    }
+  }
+
+  @media (max-width: 600px) {
+    .about__label {
+      position: static;
+    }
+
+    .about__bio {
+      max-width: none;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .project-card,
+    .project-card::before,
+    .about__side-quest a {
+      transition: none;
+    }
   }
 </style>

@@ -37,6 +37,9 @@
     queue: [] as Array<{ type: string; vars: Record<string, string> }>,
     processing: false,
     autoHideTimer: 0,
+    queueTimer: 0,
+    lastOpenedAt: 0,
+    snoozeUntil: 0,
     mouseIdleTimer: 0,
     erraticFired: false,
     erraticResetTimer: 0,
@@ -240,6 +243,16 @@
   const msgEl     = document.getElementById('ai-message') as HTMLElement | null;
   const confEl    = document.getElementById('ai-confidence') as HTMLElement | null;
   const dismissBtn = document.getElementById('ai-dismiss') as HTMLButtonElement | null;
+  const pillLabel  = document.querySelector<HTMLElement>('.ai__pill-label');
+
+  const MIN_MESSAGE_GAP = 45_000;
+  const REACTIVE_WARMUP = 30_000;
+  const SNOOZE_DURATION = 120_000;
+  const REACTIVE_TYPES = new Set([
+    'hoverEmail', 'hoverGitHub', 'hoverLinkedIn',
+    'fastScroll', 'slowScroll', 'mouseIdle', 'erraticMouse', 'scrollBottom',
+    'devtools',
+  ]);
 
   // ── Visibility ────────────────────────────────────────────────────────────
   function reveal() {
@@ -256,19 +269,22 @@
     confEl.textContent = randConf();
     card.classList.add('ai__card--open');
     state.cardOpen = true;
-    state.autoHideTimer = window.setTimeout(closeCard, 10_000);
+    state.lastOpenedAt = Date.now();
+    state.autoHideTimer = window.setTimeout(closeCard, 7_000);
   }
 
   function closeCard() {
     clearTimeout(state.autoHideTimer);
     card?.classList.remove('ai__card--open');
     state.cardOpen = false;
-    window.setTimeout(drainQueue, 500);
+    window.setTimeout(drainQueue, 800);
   }
 
   // ── Queue ─────────────────────────────────────────────────────────────────
   function enqueue(type: string, vars: Record<string, string> = {}) {
+    if (REACTIVE_TYPES.has(type) && Date.now() - state.pageStartTime < REACTIVE_WARMUP) return;
     if (state.queue.some(m => m.type === type)) return; // no duplicates in queue
+    if (state.queue.length >= 3) return; // keep stale observations from piling up
     if (TRACKED_TRIGGERS.has(type)) track(type);
     state.queue.push({ type, vars });
     if (!state.processing) drainQueue();
@@ -279,6 +295,22 @@
       state.processing = false;
       return;
     }
+
+    const now = Date.now();
+    const waitForSnooze = Math.max(0, state.snoozeUntil - now);
+    const waitForGap = Math.max(0, MIN_MESSAGE_GAP - (now - state.lastOpenedAt));
+    const wait = Math.max(waitForSnooze, waitForGap);
+    if (wait > 0) {
+      state.processing = true;
+      clearTimeout(state.queueTimer);
+      state.queueTimer = window.setTimeout(() => {
+        state.processing = false;
+        if (pillLabel) pillLabel.textContent = 'Analyzing';
+        drainQueue();
+      }, wait);
+      return;
+    }
+
     state.processing = true;
     const { type, vars } = state.queue.shift()!;
     const text = getVariantMessage(type, vars);
@@ -291,26 +323,21 @@
   }
 
   // ── Dismiss ───────────────────────────────────────────────────────────────
-  const DISMISS_LABELS = ['Noted.', 'Noted.', 'Noted.', 'I understand.', 'Please.', 'Fine.'];
-
   dismissBtn?.addEventListener('click', () => {
     closeCard();
     track('dismissed');
-    const key = `dismiss_${Math.min(state.dismissCount, 3)}`;
-    const nextLabel = DISMISS_LABELS[Math.min(state.dismissCount + 1, DISMISS_LABELS.length - 1)];
     state.dismissCount++;
-    // Sneak back in after a delay
-    window.setTimeout(() => {
-      if (dismissBtn) dismissBtn.textContent = nextLabel;
-      enqueue(key);
-    }, 3500 + Math.random() * 2000);
+    state.queue.length = 0;
+    state.snoozeUntil = Date.now() + SNOOZE_DURATION;
+    if (pillLabel) pillLabel.textContent = 'Paused for 2 min';
+    if (dismissBtn) dismissBtn.textContent = 'Noted.';
   });
 
   // ── Intro (delayed to feel like it "loaded" quietly) ──────────────────────
   window.setTimeout(() => {
     reveal();
     enqueue('intro');
-  }, 7_000);
+  }, 18_000);
 
   // ── Context-aware messages ────────────────────────────────────────────────
   // Gather signals about the visitor and inject 1-2 personalised messages,
@@ -391,10 +418,10 @@
       }
     } catch {}
 
-    // ── Pick top 2 by priority, schedule at 22s and 52s ──────────────────
+    // ── Pick top 2 by priority and let the global cadence space them out ──
     candidates.sort((a, b) => b.priority - a.priority);
     candidates.slice(0, 2).forEach((c, i) => {
-      window.setTimeout(() => enqueue(c.type, c.vars), (22 + i * 30) * 1000);
+      window.setTimeout(() => enqueue(c.type, c.vars), (70 + i * 80) * 1000);
     });
   })();
 
@@ -412,10 +439,10 @@
     }
   }
   window.addEventListener('resize', checkDevTools);
-  window.setTimeout(checkDevTools, 1500); // catch devtools already open on load
+  window.setTimeout(checkDevTools, 5_000); // catch devtools already open on load
 
   // ── Time milestones ───────────────────────────────────────────────────────
-  ([15, 30, 60, 90, 120, 180, 240] as const).forEach(s => {
+  ([60, 180] as const).forEach(s => {
     window.setTimeout(() => enqueue(`time_${s}`), s * 1000);
   });
 
@@ -447,8 +474,8 @@
   });
 
   // ── Scroll speed + scroll-to-bottom ───────────────────────────────────────
-  const MAX_FAST_FIRES = 2;
-  const MAX_SLOW_FIRES = 2;
+  const MAX_FAST_FIRES = 1;
+  const MAX_SLOW_FIRES = 1;
 
   const onScroll = () => {
     const now = Date.now();
@@ -495,7 +522,7 @@
   window.addEventListener('scroll', onScroll, { passive: true });
 
   // ── Mouse: idle + erratic ─────────────────────────────────────────────────
-  const IDLE_DELAY = 20_000; // 20s no movement
+  const IDLE_DELAY = 45_000; // 45s no movement
 
   function resetIdleTimer() {
     clearTimeout(state.mouseIdleTimer);
@@ -525,8 +552,8 @@
       const span = pts[pts.length - 1].t - pts[0].t;
       if (span > 0 && dist / span > 1.8) {
         state.erraticFired = true;
-        window.setTimeout(() => enqueue('erraticMouse'), 400);
-        state.erraticResetTimer = window.setTimeout(() => { state.erraticFired = false; }, 45_000);
+        window.setTimeout(() => enqueue('erraticMouse'), 1_400);
+        state.erraticResetTimer = window.setTimeout(() => { state.erraticFired = false; }, 90_000);
       }
     }
   };
@@ -537,6 +564,7 @@
   // ── Cleanup on Astro view transitions ─────────────────────────────────────
   document.addEventListener('astro:before-swap', () => {
     clearTimeout(state.autoHideTimer);
+    clearTimeout(state.queueTimer);
     clearTimeout(state.mouseIdleTimer);
     clearTimeout(state.erraticResetTimer);
     window.removeEventListener('scroll', onScroll);
@@ -608,11 +636,13 @@
 
   /* ── Card ───────────────────────────────────────────────────────────────── */
   .ai__card {
-    width: 290px;
-    background: var(--color-surface);
+    width: 260px;
+    background: color-mix(in srgb, var(--color-surface) 94%, transparent);
     border: 1px solid var(--color-border-highlight);
     border-radius: 10px;
     overflow: hidden;
+    box-shadow: 0 12px 36px rgb(0 0 0 / 0.12);
+    backdrop-filter: blur(16px);
     opacity: 0;
     transform: translateY(6px) scale(0.97);
     transition: opacity 0.3s ease, transform 0.3s ease;
@@ -660,9 +690,9 @@
   /* ── Message ────────────────────────────────────────────────────────────── */
   .ai__message {
     margin: 0;
-    padding: 0.875rem;
-    font-size: 0.8125rem;
-    line-height: 1.6;
+    padding: 0.75rem 0.8rem;
+    font-size: 0.75rem;
+    line-height: 1.5;
     color: var(--color-text);
     font-family: var(--font-body);
   }
@@ -671,7 +701,7 @@
   .ai__card-footer {
     display: flex;
     justify-content: flex-end;
-    padding: 0 0.875rem 0.7rem;
+    padding: 0 0.8rem 0.6rem;
   }
 
   .ai__dismiss {
