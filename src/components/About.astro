@@ -56,16 +56,9 @@ const recentPosts = (await getCollection('writing', e => !e.data.draft))
         <p class="about__bio">
           I care about the moment a complicated product stops feeling complicated.
         </p>
-        <div class="about__intro-grid">
-          <p class="about__detail">
-            I'm a product-focused interface developer working where design and engineering meet—shaping hierarchy, interaction, accessibility, and the systems underneath them. The best result is clear enough to disappear and distinctive enough to remember.
-          </p>
-          <aside class="about__side-quest">
-            <span>Current side quest</span>
-            <strong>Two FIATs. Same shape. Opposite briefs.</strong>
-            <a href="/writing/same-shape-opposite-briefs">Read the field notes <span aria-hidden="true">→</span></a>
-          </aside>
-        </div>
+        <p class="about__detail">
+          I'm a product-focused interface developer working where design and engineering meet—shaping hierarchy, interaction, accessibility, and the systems underneath them. The best result is clear enough to disappear and distinctive enough to remember.
+        </p>
       </header>
 
       <div class="about__principles" aria-label="Design principles">
@@ -190,13 +183,6 @@ const recentPosts = (await getCollection('writing', e => !e.data.draft))
     margin: 0 0 clamp(1.75rem, 4vw, 3rem);
   }
 
-  .about__intro-grid {
-    display: grid;
-    grid-template-columns: minmax(0, 1.35fr) minmax(15rem, 0.65fr);
-    gap: clamp(1.5rem, 4vw, 3rem);
-    align-items: start;
-  }
-
   .about__detail {
     max-width: 43rem;
     margin: 0;
@@ -204,55 +190,6 @@ const recentPosts = (await getCollection('writing', e => !e.data.draft))
     font-family: var(--font-body);
     font-size: clamp(1rem, 1.7vw, 1.125rem);
     line-height: 1.75;
-  }
-
-  .about__side-quest {
-    position: relative;
-    overflow: hidden;
-    padding: 1.1rem 1.15rem;
-    border: 1px solid var(--color-border-highlight);
-    border-radius: 12px;
-    background:
-      radial-gradient(circle at 100% 0, rgb(196 107 75 / 0.14), transparent 55%),
-      var(--color-surface);
-  }
-
-  .about__side-quest > span {
-    display: block;
-    margin-bottom: 0.45rem;
-    color: var(--color-accent);
-    font-family: var(--font-body);
-    font-size: 0.625rem;
-    font-weight: 600;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-  }
-
-  .about__side-quest strong {
-    display: block;
-    margin-bottom: 0.85rem;
-    color: var(--color-text);
-    font-family: var(--font-display);
-    font-size: 1.25rem;
-    font-weight: 400;
-    line-height: 1.25;
-  }
-
-  .about__side-quest a {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    color: var(--color-muted);
-    font-family: var(--font-body);
-    font-size: 0.75rem;
-    font-weight: 500;
-    text-decoration: none;
-    transition: color 0.2s, gap 0.2s;
-  }
-
-  .about__side-quest a:hover {
-    gap: 0.55rem;
-    color: var(--color-accent);
   }
 
   .about__principles {
@@ -428,10 +365,6 @@ const recentPosts = (await getCollection('writing', e => !e.data.draft))
   }
 
   @media (max-width: 800px) {
-    .about__intro-grid {
-      grid-template-columns: 1fr;
-    }
-
     .about__principles {
       grid-template-columns: 1fr;
     }
@@ -459,8 +392,7 @@ const recentPosts = (await getCollection('writing', e => !e.data.draft))
 
   @media (prefers-reduced-motion: reduce) {
     .project-card,
-    .project-card::before,
-    .about__side-quest a {
+    .project-card::before {
       transition: none;
     }
   }
